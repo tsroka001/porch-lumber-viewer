@@ -1,0 +1,1700 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Porch Lumber Viewer</title>
+<style>
+  :root {
+    --bg: #f3f4f6; --panel: #ffffff; --panel-2: #f6f7f9; --line: #dfe3e8;
+    --text: #1d2229; --muted: #66707d; --accent: #2f6fe4; --accent-soft: #e5edfc;
+    --warn: #b7791f; --warn-soft: #fbf1df; --ok: #23855a; --ok-soft: #e1f3ea;
+    --sky: #c9dcef;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #121418; --panel: #1a1d23; --panel-2: #20242b; --line: #2e333c;
+      --text: #e7e9ee; --muted: #9aa3b2; --accent: #6b97ff; --accent-soft: #23304d;
+      --warn: #e0a94a; --warn-soft: #3a2f1c; --ok: #4fbf8a; --ok-soft: #1b3428;
+      --sky: #33414f;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  header {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;
+    padding: 8px 14px; background: var(--panel); border-bottom: 1px solid var(--line);
+  }
+  header h1 { font-size: 15px; margin: 0 6px 0 0; font-weight: 650; letter-spacing: .2px; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .seg button { border: 0; border-radius: 0; background: transparent; }
+  .seg button + button { border-left: 1px solid var(--line); }
+  .seg button.on { background: var(--accent); color: #fff; }
+  button, select, input, textarea {
+    font: inherit; color: var(--text); background: var(--panel-2);
+    border: 1px solid var(--line); border-radius: 6px;
+  }
+  button { padding: 5px 10px; cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button.danger:hover { border-color: #d14b4b; color: #d14b4b; }
+  select { padding: 4px 6px; }
+  label.chk { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; user-select: none; }
+  .grow { flex: 1; }
+  .views { display: inline-flex; gap: 4px; }
+  .ctl { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+
+  main { flex: 1; display: flex; min-height: 0; }
+  #viewport { position: relative; flex: 1; min-width: 0; background: var(--sky); }
+  #viewport canvas { display: block; }
+  #viewport.tape canvas { cursor: crosshair; }
+  .labels { position: absolute; inset: 0; pointer-events: none; }
+  .hint {
+    position: absolute; left: 10px; bottom: 10px; max-width: calc(100% - 20px);
+    background: rgba(18, 20, 24, .72); color: #e9ecf1; font-size: 12px;
+    padding: 6px 10px; border-radius: 6px; pointer-events: none;
+  }
+  .hint kbd { background: rgba(255,255,255,.14); border-radius: 3px; padding: 0 4px; font: inherit; }
+  .banner {
+    position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+    background: var(--accent); color: #fff; padding: 5px 12px; border-radius: 6px;
+    font-size: 13px; display: none; pointer-events: none;
+  }
+  #viewport.tape .banner { display: block; }
+
+  .lbl {
+    background: rgba(20, 22, 26, .8); color: #f2f4f7; font-size: 11px; line-height: 1.25;
+    padding: 2px 6px; border-radius: 4px; border-left: 3px solid #8a8f98; white-space: nowrap;
+    transform: translateY(-50%);
+  }
+  .lbl b { font-weight: 600; display: block; }
+  .lbl span { opacity: .85; }
+  .lbl.wrap { border-left-color: #f0b44c; }
+  .lbl.soffit { border-left-color: #9cc2e6; }
+  .lbl.sel { background: #2f6fe4; border-left-color: #fff; font-size: 12px; z-index: 5; }
+  .dim {
+    background: #ffd34d; color: #1b1b1b; font-weight: 700; font-size: 12px;
+    padding: 1px 6px; border-radius: 4px; white-space: nowrap;
+  }
+  .dim small { font-weight: 500; opacity: .7; }
+  .dim.sec { background: #fff3c4; }
+  .dim.tape { background: #59d6c0; }
+
+  aside {
+    width: 380px; flex: none; background: var(--panel); border-left: 1px solid var(--line);
+    display: flex; flex-direction: column; min-height: 0;
+  }
+  .tabs { display: flex; border-bottom: 1px solid var(--line); }
+  .tabs button {
+    flex: 1; border: 0; border-radius: 0; background: transparent; padding: 9px 4px;
+    color: var(--muted); border-bottom: 2px solid transparent;
+  }
+  .tabs button.on { color: var(--text); border-bottom-color: var(--accent); background: transparent; }
+  .pane { flex: 1; overflow: auto; padding: 14px; display: none; }
+  .pane.on { display: block; }
+  h2 { font-size: 15px; margin: 0 0 4px; }
+  h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); margin: 18px 0 8px; }
+  .muted { color: var(--muted); }
+  .small { font-size: 12px; }
+  .badge { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 10px; font-weight: 600; }
+  .badge.est { background: var(--warn-soft); color: var(--warn); }
+  .badge.ok { background: var(--ok-soft); color: var(--ok); }
+  .badge.wrap { background: var(--accent-soft); color: var(--accent); }
+
+  .form { display: grid; grid-template-columns: 92px 1fr; gap: 7px 10px; align-items: center; }
+  .form label { color: var(--muted); font-size: 12px; }
+  .form input[type=text], .form input[type=number], .form select, .form textarea { width: 100%; padding: 5px 7px; }
+  .xyz { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+  .xyz input { width: 100%; padding: 5px 5px; }
+  .row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; }
+  .kv dt { color: var(--muted); }
+  .kv dd { margin: 0; font-variant-numeric: tabular-nums; font-weight: 550; }
+  .big { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .card { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+  th { text-align: left; color: var(--muted); font-weight: 550; font-size: 11.5px; padding: 4px 6px; border-bottom: 1px solid var(--line); }
+  td { padding: 5px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover { background: var(--panel-2); }
+  tbody tr.sel { background: var(--accent-soft); }
+  td.num, th.num { text-align: right; white-space: nowrap; }
+  .nowrap { white-space: nowrap; }
+
+  .photos { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .photos img { width: 100%; aspect-ratio: 3/4; object-fit: cover; border-radius: 6px; cursor: zoom-in; border: 1px solid var(--line); }
+  #lightbox {
+    position: fixed; inset: 0; background: rgba(0,0,0,.88); display: none;
+    align-items: center; justify-content: center; z-index: 50; cursor: zoom-out;
+  }
+  #lightbox.on { display: flex; }
+  #lightbox img { max-width: 96vw; max-height: 94vh; border-radius: 4px; }
+
+  /* ---- drawings ---- */
+  :root {
+    --paper: #fbfaf6; --ink: #26292e; --dim: #b4532a; --dw-ctx: #ecebe6; --dw-ctx-line: #c9c6bf;
+    --soffit: #2f74c9; --f-post: #e6ead2; --f-beam: #f1ddb4; --f-timber: #dcc7ad; --f-other: #e8dfd0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #191c21; --ink: #d9dde3; --dim: #f0a46c; --dw-ctx: #252930; --dw-ctx-line: #3b404a;
+      --soffit: #7fb2ee; --f-post: #3a3d2e; --f-beam: #4a3b22; --f-timber: #463729; --f-other: #3d3830;
+    }
+  }
+  #drawing { position: absolute; inset: 0; display: none; flex-direction: column; background: var(--paper); }
+  #viewport.drawing #drawing { display: flex; }
+  #viewport.drawing > canvas, #viewport.drawing .labels, #viewport.drawing .hint, #viewport.drawing .banner { display: none !important; }
+  body.drawmode .only3d { display: none !important; }
+  .dw-toolbar {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 10px;
+    background: var(--panel); border-bottom: 1px solid var(--line);
+  }
+  .dw-title { font-weight: 600; }
+  #drawSvg { flex: 1; min-height: 0; width: 100%; display: block; cursor: grab; touch-action: none; user-select: none; }
+  #drawSvg.panning { cursor: grabbing; }
+  .dw-legend { max-height: 26%; overflow: auto; border-top: 1px solid var(--line); background: var(--panel); padding: 8px 12px; }
+  .dw-legend table { font-size: 12px; }
+  .tagno {
+    display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; padding: 0 4px;
+    border: 1px solid var(--ink); border-radius: 11px; font-weight: 700; font-size: 11px; color: var(--ink);
+  }
+  .dw-ctx { fill: var(--dw-ctx); stroke: var(--dw-ctx-line); stroke-width: 1; vector-effect: non-scaling-stroke; }
+  .dw-roof { fill: none; stroke: var(--dw-ctx-line); stroke-width: 1; stroke-dasharray: 6 4; vector-effect: non-scaling-stroke; }
+  .dw-ground { stroke: var(--ink); stroke-width: 1.6; vector-effect: non-scaling-stroke; }
+  .dw-m { stroke: var(--ink); stroke-width: 1.3; vector-effect: non-scaling-stroke; cursor: pointer; fill: var(--f-other); }
+  .dw-m.post { fill: var(--f-post); }
+  .dw-m.beam { fill: var(--f-beam); }
+  .dw-m.timber { fill: var(--f-timber); }
+  .dw-m.over { fill: none; stroke-dasharray: 7 4; }
+  .dw-m.sel { stroke: var(--accent); stroke-width: 3; }
+  .dw-sof { fill: var(--soffit); fill-opacity: .07; stroke: var(--soffit); stroke-width: 1.5; stroke-dasharray: 8 4; vector-effect: non-scaling-stroke; cursor: pointer; }
+  .dw-sof.line { fill: none; stroke-width: 2.5; }
+  .dw-sof.sel { stroke: var(--accent); fill-opacity: .16; }
+  .dw-ext, .dw-dl { stroke: var(--dim); stroke-width: 1; vector-effect: non-scaling-stroke; }
+  .dw-tk { stroke: var(--dim); stroke-width: 1.7; vector-effect: non-scaling-stroke; }
+  .dw-dt, .dw-in, .dw-sl {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; text-anchor: middle; dominant-baseline: central;
+    paint-order: stroke; stroke: var(--paper); stroke-linejoin: round;
+  }
+  .dw-dt { fill: var(--dim); font-weight: 650; }
+  .dw-in { fill: var(--ink); opacity: .85; stroke: none; }
+  .dw-sl { fill: var(--soffit); font-weight: 650; }
+  .dw-lead { stroke: var(--ink); stroke-width: .8; opacity: .6; vector-effect: non-scaling-stroke; }
+  .dw-tag { cursor: pointer; }
+  .dw-tag circle { fill: var(--paper); stroke: var(--ink); stroke-width: 1.1; vector-effect: non-scaling-stroke; }
+  .dw-tag text { fill: var(--ink); font-family: system-ui, sans-serif; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+  .dw-tag.sel circle { stroke: var(--accent); stroke-width: 2.2; }
+
+  @media print {
+    :root {
+      --paper: #fff; --ink: #000; --dim: #a0441c; --dw-ctx: #f1f1f1; --dw-ctx-line: #bbb; --soffit: #1d5fb0;
+      --f-post: #f3f5e8; --f-beam: #f8eedb; --f-timber: #efe5d8; --f-other: #f4efe7;
+      --panel: #fff; --line: #ccc; --text: #000; --muted: #444;
+    }
+    body { overflow: visible; height: auto; display: block; }
+    header, aside, .dw-toolbar button, .dw-toolbar .seg { display: none !important; }
+    main { display: block; }
+    #viewport { height: auto; background: none; }
+    #drawing { position: static; display: flex; }
+    #drawSvg { height: 62vh; flex: none; }
+    .dw-legend { max-height: none; overflow: visible; }
+  }
+
+  @media (max-width: 860px) {
+    body { overflow: auto; height: auto; }
+    main { flex-direction: column; }
+    #viewport { height: 62vh; flex: none; }
+    aside { width: 100%; border-left: 0; border-top: 1px solid var(--line); }
+    .pane { overflow: visible; }
+    header { padding: 8px 16px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Porch Lumber</h1>
+  <div class="seg" id="sceneTabs">
+    <button data-scene="front">Front porch</button>
+    <button data-scene="rear">Rear porch</button>
+  </div>
+  <div class="seg" id="modeTabs">
+    <button data-mode="3d">3D</button>
+    <button data-mode="draw" title="Flat plan and elevation drawings with every dimension">Drawings</button>
+  </div>
+  <div class="views only3d">
+    <button data-view="overview" title="Fit everything">Overview</button>
+    <button data-view="street" title="Standing in the yard">Street</button>
+    <button data-view="under" title="Standing under the porch">Under</button>
+    <button data-view="top" title="Plan view">Top</button>
+  </div>
+  <span class="grow"></span>
+  <span class="ctl only3d">Labels
+    <select id="labelMode">
+      <option value="all">All</option>
+      <option value="wrap">Wrapped only</option>
+      <option value="off">Off</option>
+    </select>
+  </span>
+  <label class="chk"><input type="checkbox" id="ctxToggle"> House</label>
+  <label class="chk"><input type="checkbox" id="soffitToggle"> Soffits</label>
+  <label class="chk only3d" title="Show wrapped pieces at their finished (wrapped) size"><input type="checkbox" id="wrapToggle"> Wrap preview</label>
+  <span class="seg only3d">
+    <button id="tapeBtn" title="Click two points to measure between them">Tape</button>
+    <button id="tapeClear" title="Clear tape measurements">Clear</button>
+  </span>
+</header>
+
+<main>
+  <div id="viewport">
+    <div class="banner">Tape: click two points · <b>Esc</b> to finish</div>
+    <div class="hint">
+      <kbd>Drag</kbd> orbit · <kbd>Right-drag</kbd> pan · <kbd>Scroll</kbd> zoom ·
+      <kbd>W A S D</kbd> walk · <kbd>Q</kbd>/<kbd>E</kbd> down/up · <kbd>Shift</kbd> faster ·
+      click a piece for its dimensions
+    </div>
+    <div id="drawing">
+      <div class="dw-toolbar">
+        <div class="seg" id="drawTabs">
+          <button data-dview="plan">Plan</button>
+          <button data-dview="front">Front elevation</button>
+          <button data-dview="side">Side elevation</button>
+        </div>
+        <span class="dw-title" id="drawTitle"></span>
+        <span class="grow"></span>
+        <button id="drawFit" title="Fit the drawing to the window">Fit</button>
+        <button id="drawPrint" title="Print, or choose Save as PDF">Print / PDF</button>
+      </div>
+      <svg id="drawSvg" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet"></svg>
+      <div class="dw-legend" id="drawLegend"></div>
+    </div>
+  </div>
+  <aside>
+    <div class="tabs" id="paneTabs">
+      <button data-pane="piece">Piece</button>
+      <button data-pane="list">Lumber list</button>
+      <button data-pane="photos">Photos</button>
+    </div>
+    <div class="pane" id="pane-piece"></div>
+    <div class="pane" id="pane-list"></div>
+    <div class="pane" id="pane-photos"></div>
+  </aside>
+</main>
+
+<div id="lightbox"><img alt=""></div>
+<input type="file" id="importFile" accept=".js,.json" hidden>
+
+<script src="data.js"></script>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+
+// ---------- state ----------
+const DEFAULTS = window.PORCH_DEFAULTS;
+const STORE_KEY = 'porch-lumber-v1';
+const UI_KEY = 'porch-lumber-ui-v1';
+const clone = o => JSON.parse(JSON.stringify(o));
+
+function loadState() {
+  try {
+    const s = JSON.parse(localStorage.getItem(STORE_KEY));
+    // a newer data.js (higher version) replaces edits saved against an older one
+    if (s && s.scenes && (s.version || 0) >= (DEFAULTS.version || 0)) return s;
+  } catch (e) {}
+  return clone(DEFAULTS);
+}
+function saveState() {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) {}
+}
+let state = loadState();
+
+const ui = { scene: 'front', pane: 'piece', labels: 'wrap', context: true, wrapPreview: false, soffits: true,
+  mode: '3d', drawView: 'plan' };
+try { Object.assign(ui, JSON.parse(localStorage.getItem(UI_KEY)) || {}); } catch (e) {}
+if (!state.scenes[ui.scene]) ui.scene = Object.keys(state.scenes)[0];
+function saveUi() {
+  try { localStorage.setItem(UI_KEY, JSON.stringify(ui)); } catch (e) {}
+}
+let selectedId = null;
+let tapeMode = false;
+const tapes = {};       // scene -> [{a, b}]
+let tapePending = null; // first clicked point
+
+const TYPES = {
+  post:   { label: 'Post',            color: '#cfc68f' },
+  beam:   { label: 'Beam / header',   color: '#d9a75e' },
+  timber: { label: 'Truss timber',     color: '#5e4632' },
+  joist:  { label: 'Joist / rafter',  color: '#d8b07a' },
+  other:  { label: 'Other',           color: '#bfa27e' }
+};
+const FACES = { 4: 'All 4 sides', 3: '3 sides (one open)', 2: '2 opposite sides', 1: '1 face only' };
+const WRAP_COLOR = '#f3efe6';
+
+const SOFFIT_KINDS = { flat: 'Flat ceiling', gable: 'Vaulted (follows gable)' };
+const SOFFIT_COLOR = '#9cc2e6';
+
+const sceneData = () => state.scenes[ui.scene];
+const soffitsOf = sc => sc.soffits || (sc.soffits = []);
+const findMember = id => sceneData().members.find(m => m.id === id);
+const findSoffit = id => soffitsOf(sceneData()).find(s => s.id === id);
+
+// ---------- units ----------
+function fracIn(x) {
+  let n = Math.round(Math.abs(x) * 16);
+  const whole = Math.floor(n / 16);
+  let r = n % 16, den = 16;
+  while (r && r % 2 === 0) { r /= 2; den /= 2; }
+  const s = r ? (whole ? `${whole}-${r}/${den}` : `${r}/${den}`) : `${whole}`;
+  return (x < 0 && n ? '-' : '') + s;
+}
+const fmtIn = x => fracIn(x) + '"';
+function fmtLen(x) {
+  const n = Math.round(x * 16);
+  const ft = Math.floor(n / 192);
+  if (ft <= 0) return fmtIn(x);
+  return `${ft}' ${fracIn((n - ft * 192) / 16)}"`;
+}
+function parseLen(str) {
+  let s = String(str).trim().replace(/[″”]/g, '"').replace(/[′’]/g, "'");
+  if (!s) return NaN;
+  let ft = 0;
+  const m = s.match(/^([\d.]+)\s*(?:'|ft)\s*(.*)$/i);
+  if (m) { ft = parseFloat(m[1]); s = m[2]; }
+  s = s.replace(/"|in(ches)?/gi, '').replace(/^-/, '').trim();
+  if (!s) return m ? ft * 12 : NaN;
+  const p = s.match(/^(\d+(?:\.\d+)?)?(?:[\s-]+)?(?:(\d+)\/(\d+))?$/);
+  if (!p || (p[1] === undefined && p[2] === undefined)) return NaN;
+  return ft * 12 + (p[1] ? parseFloat(p[1]) : 0) + (p[2] ? +p[2] / +p[3] : 0);
+}
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+// ---------- member math ----------
+function frame(m) {
+  const s = new THREE.Vector3(...m.start), e = new THREE.Vector3(...m.end);
+  const dir = e.clone().sub(s);
+  const len = dir.length();
+  if (len < 0.01) return null;
+  const u = dir.divideScalar(len);
+  const vertical = Math.abs(u.y) > 0.98;
+  const ref = vertical ? new THREE.Vector3(0, 0, 1) : new THREE.Vector3(0, 1, 0);
+  const d = ref.clone().addScaledVector(u, -ref.dot(u)).normalize(); // depth axis
+  const w = new THREE.Vector3().crossVectors(d, u);                  // width axis
+  const q = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(w, d, u));
+  return { s, e, u, d, w, len, vertical, q, mid: s.clone().add(e).multiplyScalar(0.5) };
+}
+const memberLength = m => new THREE.Vector3(...m.end).distanceTo(new THREE.Vector3(...m.start));
+
+// Finished (wrapped) section. The open face of a 3-sided / 1-face wrap is the
+// top of a horizontal member, or the back (wall side) of a post.
+function finished(m) {
+  const t = state.wrapThickness, W = m.width, D = m.depth;
+  const f = frame(m);
+  const open = f && f.vertical ? -1 : 1;
+  switch (+m.faces) {
+    case 3: return { w: W + 2 * t, d: D + t, off: -open * t / 2 };
+    case 2: return { w: W + 2 * t, d: D, off: 0 };
+    case 1: return { w: W, d: D + t, off: -open * t / 2 };
+    default: return { w: W + 2 * t, d: D + 2 * t, off: 0 };
+  }
+}
+// Wrap boards needed (butt joints; side boards lap over the edges of the others).
+function boards(m) {
+  const t = state.wrapThickness, W = m.width, D = m.depth;
+  switch (+m.faces) {
+    case 3: return [{ n: 2, w: D + t }, { n: 1, w: W }];
+    case 2: return [{ n: 2, w: D }];
+    case 1: return [{ n: 1, w: W }];
+    default: return [{ n: 2, w: W + 2 * t }, { n: 2, w: D }];
+  }
+}
+const wrapArea = m => boards(m).reduce((a, b) => a + b.n * b.w, 0) * memberLength(m) / 144;
+
+// Soffit ceiling panels. Flat: one W x D panel at height y. Gable: two sloped
+// panels rising from the eaves (x0 and x0+W) to the middle at the given pitch.
+function soffitInfo(s) {
+  const W = s.width, D = s.depth, x0 = s.x0, z0 = s.z0, z1 = z0 + D, y = s.y;
+  if (s.kind === 'gable') {
+    const half = W / 2, rise = half * (s.pitch || 0) / 12, slope = Math.hypot(half, rise), xm = x0 + half;
+    return {
+      panels: [[[x0, y, z0], [x0, y, z1], [xm, y + rise, z1], [xm, y + rise, z0]],
+               [[xm, y + rise, z0], [xm, y + rise, z1], [x0 + W, y, z1], [x0 + W, y, z0]]],
+      pieces: [{ n: 2, a: slope, b: D }], slope, rise, area: 2 * slope * D / 144
+    };
+  }
+  return { panels: [[[x0, y, z0], [x0, y, z1], [x0 + W, y, z1], [x0 + W, y, z0]]],
+    pieces: [{ n: 1, a: W, b: D }], area: W * D / 144 };
+}
+const panelsText = s => soffitInfo(s).pieces.map(p => `${p.n} × ${fmtLen(p.a)} × ${fmtLen(p.b)}`).join(' + ');
+const boardsText = m => boards(m).map(b => `${b.n} × ${fmtIn(b.w)}`).join(' + ');
+
+// Section wording: sloped/horizontal pieces are "thick" (front to back) x "tall";
+// posts are "wide" (side to side) x "deep" (front to back).
+const secNames = m => { const f = frame(m); return f && f.vertical ? ['wide', 'deep'] : ['thick', 'tall']; };
+function secText(m, w = m.width, d = m.depth, fmt = fmtIn) {
+  const [a, b] = secNames(m);
+  return `${fmt(w)} ${a} × ${fmt(d)} ${b}`;
+}
+
+// ---------- three.js setup ----------
+const vp = document.getElementById('viewport');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+vp.prepend(renderer.domElement);
+const labelRenderer = new CSS2DRenderer();
+labelRenderer.domElement.className = 'labels';
+vp.appendChild(labelRenderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#bcd3ea');
+const camera = new THREE.PerspectiveCamera(55, 1, 1, 30000);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.12;
+controls.screenSpacePanning = true;
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x8a7a66, 1.4));
+const sun = new THREE.DirectionalLight(0xffffff, 1.8);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -500, right: 500, top: 500, bottom: -500, near: 10, far: 3000 });
+sun.shadow.bias = -0.0005;
+scene.add(sun, sun.target);
+
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(8000, 8000),
+  new THREE.MeshStandardMaterial({ color: '#a08d70', roughness: 1 }));
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = -8.05;
+ground.receiveShadow = true;
+scene.add(ground);
+const grid = new THREE.GridHelper(1440, 120, 0x6f604b, 0x7d6d56); // 1 ft squares
+grid.position.y = -7.95;
+grid.material.transparent = true;
+grid.material.opacity = 0.35;
+scene.add(grid);
+
+const membersG = new THREE.Group(), contextG = new THREE.Group(), dimsG = new THREE.Group(), tapeG = new THREE.Group();
+const soffitG = new THREE.Group();
+scene.add(membersG, contextG, dimsG, tapeG, soffitG);
+
+function clearGroup(g) {
+  const labels = [];
+  g.traverse(o => { if (o.isCSS2DObject) labels.push(o); });
+  labels.forEach(o => o.removeFromParent()); // fires 'removed' so the DOM element goes too
+  g.traverse(o => {
+    o.geometry?.dispose();
+    if (o.material && !o.material.userData.shared) o.material.dispose();
+  });
+  g.clear();
+}
+function label(html, cls, pos) {
+  const div = document.createElement('div');
+  div.className = cls;
+  div.innerHTML = html;
+  const o = new CSS2DObject(div);
+  o.position.copy(pos);
+  return o;
+}
+
+// ---------- build ----------
+function buildMembers() {
+  clearGroup(membersG);
+  for (const m of sceneData().members) {
+    const f = frame(m);
+    if (!f) continue;
+    const sel = m.id === selectedId;
+    let w = m.width, d = m.depth, off = 0, color = (TYPES[m.type] || TYPES.other).color;
+    if (ui.wrapPreview && m.wrap) {
+      const fin = finished(m);
+      w = fin.w; d = fin.d; off = fin.off; color = WRAP_COLOR;
+    }
+    const geom = new THREE.BoxGeometry(w, d, f.len);
+    const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.82 });
+    if (sel) { mat.emissive.set('#2f6fe4'); mat.emissiveIntensity = 0.45; }
+    const mesh = new THREE.Mesh(geom, mat);
+    mesh.position.copy(f.mid).addScaledVector(f.d, off);
+    mesh.quaternion.copy(f.q);
+    mesh.castShadow = mesh.receiveShadow = true;
+    mesh.userData.id = m.id;
+    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geom),
+      new THREE.LineBasicMaterial({ color: sel ? '#9cc0ff' : '#2a2520', transparent: true, opacity: sel ? 1 : 0.45 }));
+    mesh.add(edges);
+    membersG.add(mesh);
+
+    const show = sel || ui.labels === 'all' || (ui.labels === 'wrap' && m.wrap);
+    if (show) {
+      const pos = f.mid.clone().addScaledVector(f.d, d / 2 + 3);
+      if (f.vertical) pos.y += f.len * 0.12;
+      membersG.add(label(
+        `<b>${esc(m.name)}</b><span>${fmtLen(f.len)} · ${secText(m, m.width, m.depth, fracIn)}</span>`,
+        'lbl' + (m.wrap ? ' wrap' : '') + (sel ? ' sel' : ''), pos));
+    }
+  }
+  buildDims();
+}
+
+function buildSoffits() {
+  clearGroup(soffitG);
+  if (!ui.soffits) return;
+  for (const s of soffitsOf(sceneData())) {
+    if (!(s.width > 0 && s.depth > 0)) continue;
+    const sel = s.id === selectedId;
+    const info = soffitInfo(s);
+    const center = new THREE.Vector3();
+    let count = 0;
+    for (const quad of info.panels) {
+      const p = quad.map(v => new THREE.Vector3(v[0], v[1] - 0.1, v[2]));
+      const g = new THREE.BufferGeometry().setFromPoints([p[0], p[1], p[2], p[0], p[2], p[3]]);
+      g.computeVertexNormals();
+      const mat = new THREE.MeshStandardMaterial({ color: SOFFIT_COLOR, side: THREE.DoubleSide, roughness: 0.9,
+        transparent: true, opacity: sel ? 0.95 : 0.78 });
+      if (sel) { mat.emissive.set('#2f6fe4'); mat.emissiveIntensity = 0.4; }
+      const mesh = new THREE.Mesh(g, mat);
+      mesh.receiveShadow = true;
+      mesh.userData.id = s.id;
+      mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(g),
+        new THREE.LineBasicMaterial({ color: sel ? '#9cc0ff' : '#3c5d7d' })));
+      soffitG.add(mesh);
+      p.forEach(v => { center.add(v); count++; });
+    }
+    if (sel || ui.labels !== 'off') {
+      center.divideScalar(count);
+      center.y -= 4;
+      soffitG.add(label(`<b>${esc(s.name)}</b><span>${panelsText(s)} · ${info.area.toFixed(1)} sq ft</span>`,
+        'lbl soffit' + (sel ? ' sel' : ''), center));
+    }
+  }
+}
+
+function buildContext() {
+  clearGroup(contextG);
+  if (!ui.context) return;
+  for (const c of sceneData().context || []) {
+    if (c.type === 'box') {
+      const min = new THREE.Vector3(...c.min), max = new THREE.Vector3(...c.max);
+      const size = max.clone().sub(min);
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(size.x, size.y, size.z),
+        new THREE.MeshStandardMaterial({ color: c.color || '#ddd', roughness: 0.95, transparent: c.opacity < 1, opacity: c.opacity ?? 1 }));
+      mesh.position.copy(min.add(max).multiplyScalar(0.5));
+      mesh.receiveShadow = true;
+      contextG.add(mesh);
+    } else if (c.type === 'quad') {
+      const p = c.pts.map(v => new THREE.Vector3(...v));
+      const g = new THREE.BufferGeometry().setFromPoints([p[0], p[1], p[2], p[0], p[2], p[3]]);
+      g.computeVertexNormals();
+      const mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({
+        color: c.color || '#666', side: THREE.DoubleSide, transparent: true,
+        opacity: c.opacity ?? 0.55, depthWrite: false, roughness: 1 }));
+      mesh.receiveShadow = true;
+      contextG.add(mesh);
+    } else if (c.type === 'joists') {
+      const [tw, th] = c.size, zl = c.z1 - c.z0;
+      const mat = new THREE.MeshStandardMaterial({ color: c.color || '#d8b07a', roughness: 0.9 });
+      for (let x = c.x0 + tw / 2; x <= c.x1 - tw / 2 + 0.01; x += c.spacing) {
+        const mesh = new THREE.Mesh(new THREE.BoxGeometry(tw, th, zl), mat);
+        mesh.position.set(x, c.y + th / 2, c.z0 + zl / 2);
+        mesh.receiveShadow = mesh.castShadow = true;
+        contextG.add(mesh);
+      }
+    }
+  }
+}
+
+const dimMat = new THREE.LineBasicMaterial({ color: '#ffd34d', depthTest: false });
+dimMat.userData.shared = true;
+function line(a, b, mat = dimMat) {
+  const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints([a, b]), mat);
+  l.renderOrder = 10;
+  return l;
+}
+// Dimension line from a to b, pushed out along `off`, with ticks and a label.
+function addDim(a, b, off, text) {
+  const pa = a.clone().addScaledVector(off, 8), pb = b.clone().addScaledVector(off, 8);
+  dimsG.add(line(pa, pb), line(a, pa.clone().addScaledVector(off, 3)), line(b, pb.clone().addScaledVector(off, 3)));
+  const u = pb.clone().sub(pa).normalize();
+  for (const p of [pa, pb]) {
+    const tick = u.clone().add(off).normalize().multiplyScalar(2.5);
+    dimsG.add(line(p.clone().sub(tick), p.clone().add(tick)));
+  }
+  dimsG.add(label(text, 'dim', pa.clone().add(pb).multiplyScalar(0.5).addScaledVector(off, 4)));
+}
+function buildSoffitDims(s) {
+  const info = soffitInfo(s);
+  const V = v => new THREE.Vector3(...v);
+  const [q] = info.panels;
+  // front edge (width, or slope length of the first vaulted panel), then the house-to-beam depth
+  const wLen = s.kind === 'gable' ? info.slope : s.width;
+  addDim(V(q[1]), V(q[2]), new THREE.Vector3(0, 0, 1), `${fmtLen(wLen)} <small>${s.kind === 'gable' ? 'slope' : 'wide'}</small>`);
+  addDim(V(q[0]), V(q[1]), new THREE.Vector3(-1, 0, 0), `${fmtLen(s.depth)} <small>deep</small>`);
+}
+
+function buildDims() {
+  clearGroup(dimsG);
+  const sf = selectedId && findSoffit(selectedId);
+  if (sf && ui.soffits) { buildSoffitDims(sf); return; }
+  const m = selectedId && findMember(selectedId);
+  if (!m) return;
+  const f = frame(m);
+  if (!f) return;
+  const off = f.vertical ? f.w : f.d.clone().negate();
+  const half = f.vertical ? m.width / 2 : m.depth / 2;
+  const gap = half + 9;
+  const a = f.s.clone().addScaledVector(off, gap), b = f.e.clone().addScaledVector(off, gap);
+  dimsG.add(line(a, b));
+  for (const [end, p] of [[f.s, a], [f.e, b]]) {
+    dimsG.add(line(end.clone().addScaledVector(off, half + 1.5), p.clone().addScaledVector(off, 3)));
+    const tick = f.u.clone().add(off).normalize().multiplyScalar(2.5);
+    dimsG.add(line(p.clone().sub(tick), p.clone().add(tick)));
+  }
+  dimsG.add(label(`${fmtLen(f.len)} <small>(${f.len.toFixed(2)}")</small>`, 'dim',
+    a.clone().add(b).multiplyScalar(0.5).addScaledVector(off, 4)));
+  let sec = secText(m);
+  if (m.wrap) { const fin = finished(m); sec += ` <small>→ wrapped ${secText(m, fin.w, fin.d)}</small>`; }
+  dimsG.add(label(sec, 'dim sec', f.e.clone().addScaledVector(f.u, 7)));
+}
+
+function buildTapes() {
+  clearGroup(tapeG);
+  const mat = new THREE.LineBasicMaterial({ color: '#59d6c0', depthTest: false });
+  const dot = p => {
+    const s = new THREE.Mesh(new THREE.SphereGeometry(1.2, 12, 8),
+      new THREE.MeshBasicMaterial({ color: '#59d6c0', depthTest: false }));
+    s.position.copy(p); s.renderOrder = 11;
+    return s;
+  };
+  for (const t of tapes[ui.scene] || []) {
+    tapeG.add(line(t.a, t.b, mat), dot(t.a), dot(t.b));
+    const dist = t.a.distanceTo(t.b);
+    tapeG.add(label(`${fmtLen(dist)} <small>(${dist.toFixed(2)}")</small>`, 'dim tape',
+      t.a.clone().add(t.b).multiplyScalar(0.5)));
+  }
+  if (tapePending) tapeG.add(dot(tapePending));
+}
+
+function rebuild() {
+  buildContext();
+  buildSoffits();
+  buildMembers();
+  buildTapes();
+  renderList();
+}
+
+// ---------- camera ----------
+let tween = null;
+function flyTo(pos, target, ms = 650) {
+  tween = { p0: camera.position.clone(), t0: controls.target.clone(), p1: pos, t1: target, start: performance.now(), ms };
+}
+function sceneBox() {
+  const box = new THREE.Box3();
+  for (const m of sceneData().members) {
+    box.expandByPoint(new THREE.Vector3(...m.start));
+    box.expandByPoint(new THREE.Vector3(...m.end));
+  }
+  if (box.isEmpty()) box.set(new THREE.Vector3(0, 0, 0), new THREE.Vector3(120, 120, 120));
+  return box;
+}
+function setView(name, instant) {
+  const box = sceneBox();
+  const c = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3());
+  // pull back further when the viewport is tall and narrow so the width still fits
+  const R = Math.max(size.x, size.y, size.z, 60) * Math.max(1, 1.4 / camera.aspect);
+  const zMax = box.max.z;
+  let pos, tgt;
+  if (name === 'street') {
+    pos = new THREE.Vector3(c.x, 64, zMax + Math.max(240, size.x * 0.85 * Math.max(1, 1.4 / camera.aspect)));
+    tgt = new THREE.Vector3(c.x, 95, zMax * 0.5);
+  } else if (name === 'under') {
+    pos = new THREE.Vector3(c.x - size.x * 0.15, 62, zMax * 0.3);
+    tgt = new THREE.Vector3(c.x + size.x * 0.1, box.max.y * 0.85, zMax);
+  } else if (name === 'top') {
+    pos = new THREE.Vector3(c.x, R * 1.6 + 250, c.z + 1);
+    tgt = new THREE.Vector3(c.x, 0, c.z);
+  } else {
+    pos = c.clone().add(new THREE.Vector3(-0.45, 0.42, 1).normalize().multiplyScalar(R * 1.35));
+    tgt = c.clone();
+  }
+  if (instant) { camera.position.copy(pos); controls.target.copy(tgt); tween = null; }
+  else flyTo(pos, tgt);
+  sun.position.copy(c).add(new THREE.Vector3(-250, 520, 420));
+  sun.target.position.copy(c);
+}
+function focusMember(m) {
+  const f = frame(m);
+  if (!f) return;
+  const dir = camera.position.clone().sub(controls.target).normalize();
+  const dist = THREE.MathUtils.clamp(f.len * 1.25, 90, 700);
+  flyTo(f.mid.clone().addScaledVector(dir, dist), f.mid.clone());
+}
+
+// ---------- picking ----------
+const raycaster = new THREE.Raycaster();
+const ndc = new THREE.Vector2();
+let downAt = null;
+renderer.domElement.addEventListener('pointerdown', e => { downAt = [e.clientX, e.clientY]; });
+renderer.domElement.addEventListener('pointerup', e => {
+  if (!downAt || e.button !== 0) return;
+  const moved = Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]);
+  downAt = null;
+  if (moved > 5) return;
+  const r = renderer.domElement.getBoundingClientRect();
+  ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+  if (tapeMode) {
+    const hit = raycaster.intersectObjects([membersG, soffitG, contextG, ground], true).find(h => h.object.isMesh);
+    if (!hit) return;
+    if (!tapePending) tapePending = hit.point.clone();
+    else {
+      (tapes[ui.scene] ||= []).push({ a: tapePending, b: hit.point.clone() });
+      tapePending = null;
+    }
+    buildTapes();
+    return;
+  }
+  const hit = raycaster.intersectObjects([...membersG.children, ...soffitG.children], false).find(h => h.object.userData.id);
+  select(hit ? hit.object.userData.id : null);
+});
+
+function select(id, { focus = false } = {}) {
+  selectedId = id;
+  buildSoffits();
+  buildMembers();
+  renderList();
+  renderPiece();
+  if (id) setPane('piece');
+  if (id && focus) {
+    const s = findSoffit(id);
+    if (s) focusSoffit(s); else focusMember(findMember(id));
+  }
+}
+function focusSoffit(s) {
+  const pts = soffitInfo(s).panels.flat().map(v => new THREE.Vector3(...v));
+  const box = new THREE.Box3().setFromPoints(pts);
+  const c = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3());
+  // look up at the ceiling from standing height out in front of it
+  flyTo(new THREE.Vector3(c.x, 60, box.max.z + Math.max(size.x, size.z) * 0.6 + 60), c);
+}
+
+// ---------- keyboard walk ----------
+const keys = new Set();
+const typing = e => /INPUT|TEXTAREA|SELECT/.test(e.target.tagName);
+addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    if (lightbox.classList.contains('on')) { lightbox.classList.remove('on'); return; }
+    if (tapeMode) { setTape(false); return; }
+    if (!typing(e)) select(null);
+    return;
+  }
+  if (typing(e)) return;
+  keys.add(e.code);
+  if (e.code.startsWith('Arrow')) e.preventDefault();
+});
+addEventListener('keyup', e => keys.delete(e.code));
+addEventListener('blur', () => keys.clear());
+
+function walk(dt) {
+  const k = c => keys.has(c) ? 1 : 0;
+  const fwd = k('KeyW') + k('ArrowUp') - k('KeyS') - k('ArrowDown');
+  const strafe = k('KeyD') + k('ArrowRight') - k('KeyA') - k('ArrowLeft');
+  const rise = k('KeyE') - k('KeyQ');
+  if (!fwd && !strafe && !rise) return;
+  tween = null;
+  const speed = (keys.has('ShiftLeft') || keys.has('ShiftRight') ? 360 : 110) * dt; // inches / s
+  const f = new THREE.Vector3();
+  camera.getWorldDirection(f);
+  f.y = 0;
+  if (f.lengthSq() < 1e-6) f.set(0, 0, -1);
+  f.normalize();
+  const r = new THREE.Vector3().crossVectors(f, camera.up).normalize();
+  const delta = f.multiplyScalar(fwd * speed).addScaledVector(r, strafe * speed);
+  delta.y += rise * speed;
+  camera.position.add(delta);
+  controls.target.add(delta);
+}
+
+// ---------- loop ----------
+function resize() {
+  const w = vp.clientWidth, h = vp.clientHeight;
+  renderer.setSize(w, h);
+  labelRenderer.setSize(w, h);
+  camera.aspect = w / Math.max(h, 1);
+  camera.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe(vp);
+let last = performance.now();
+renderer.setAnimationLoop(now => {
+  const dt = Math.min((now - last) / 1000, 0.1);
+  last = now;
+  if (ui.mode === 'draw') return; // the 3D view is hidden behind the drawings
+  walk(dt);
+  if (tween) {
+    const t = Math.min(1, (now - tween.start) / tween.ms), e = t * t * (3 - 2 * t);
+    camera.position.lerpVectors(tween.p0, tween.p1, e);
+    controls.target.lerpVectors(tween.t0, tween.t1, e);
+    if (t >= 1) tween = null;
+  }
+  controls.update();
+  renderer.render(scene, camera);
+  labelRenderer.render(scene, camera);
+});
+
+// ---------- panels ----------
+const $ = sel => document.querySelector(sel);
+const panes = { piece: $('#pane-piece'), list: $('#pane-list'), photos: $('#pane-photos') };
+function setPane(p) {
+  ui.pane = p; saveUi();
+  document.querySelectorAll('#paneTabs button').forEach(b => b.classList.toggle('on', b.dataset.pane === p));
+  Object.entries(panes).forEach(([k, el]) => el.classList.toggle('on', k === p));
+}
+document.querySelectorAll('#paneTabs button').forEach(b => b.onclick = () => setPane(b.dataset.pane));
+
+function renderPiece() {
+  const el = panes.piece;
+  const sf = selectedId && findSoffit(selectedId);
+  if (sf) { renderSoffit(sf); return; }
+  const m = selectedId && findMember(selectedId);
+  if (!m) {
+    const ms = sceneData().members;
+    const unverified = ms.filter(x => !x.verified).length;
+    el.innerHTML = `
+      <h2>${esc(sceneData().title)}</h2>
+      <p class="muted">Click any piece of lumber in the 3D view (or a row in the Lumber list) to see and edit its dimensions.</p>
+      <div class="card kv">
+        <dt>Pieces</dt><dd>${ms.length}</dd>
+        <dt>To be wrapped</dt><dd>${ms.filter(x => x.wrap).length}</dd>
+        <dt>Still estimated</dt><dd>${unverified ? `<span class="badge est">${unverified} of ${ms.length}</span>` : '<span class="badge ok">all verified</span>'}</dd>
+      </div>
+      <p class="small muted">Starting dimensions are estimates read off the photos. Replace them with tape-measure values and tick <b>Verified</b>.</p>
+      <div class="row"><button id="addPiece">+ Add piece</button></div>`;
+    $('#addPiece').onclick = addPiece;
+    return;
+  }
+  const len = memberLength(m);
+  const vert = secNames(m)[0] === 'wide';
+  const typeOpts = Object.entries(TYPES).map(([k, t]) => `<option value="${k}" ${m.type === k ? 'selected' : ''}>${t.label}</option>`).join('');
+  const faceOpts = Object.entries(FACES).map(([k, t]) => `<option value="${k}" ${+m.faces === +k ? 'selected' : ''}>${t}</option>`).join('');
+  const xyz = (p, k) => `<div class="xyz">${['x', 'y', 'z'].map((a, i) =>
+    `<input type="number" step="0.0625" data-f="${k}${i}" value="${+m[p][i].toFixed(4)}" title="${a} (in)">`).join('')}</div>`;
+  el.innerHTML = `
+    <div class="row" style="justify-content:space-between;align-items:center">
+      <h2>${esc(m.name)}</h2>
+      <span id="vbadge"></span>
+    </div>
+    <div class="card" style="margin:8px 0 4px">
+      <div class="big" id="bigLen">${fmtLen(len)}</div>
+      <div class="muted" id="bigSec"></div>
+    </div>
+    <div id="calc"></div>
+    <h3>Edit dimensions</h3>
+    <div class="form">
+      <label>Name</label><input type="text" data-f="name" value="${esc(m.name)}">
+      <label>Type</label><select data-f="type">${typeOpts}</select>
+      <label>Length</label><input type="text" data-f="length" value="${fmtLen(len)}" title="e.g. 14' 3-1/2&quot; or 171.5">
+      <label>${vert ? 'Wide' : 'Thick'}</label><input type="text" data-f="width" value="${fmtIn(m.width)}" title="${vert ? 'Side to side' : 'Front to back (side to side for a beam running toward the house)'}">
+      <label>${vert ? 'Deep' : 'Tall'}</label><input type="text" data-f="depth" value="${fmtIn(m.depth)}" title="${vert ? 'Front to back' : 'Height of the piece'}">
+      <label>Start x y z</label>${xyz('start', 's')}
+      <label>End x y z</label>${xyz('end', 'e')}
+      <label>Wrap</label><label class="chk"><input type="checkbox" data-f="wrap" ${m.wrap ? 'checked' : ''}> This piece gets wrapped</label>
+      <label>Wrap faces</label><select data-f="faces">${faceOpts}</select>
+      <label>Verified</label><label class="chk"><input type="checkbox" data-f="verified" ${m.verified ? 'checked' : ''}> Measured on site</label>
+      <label>Notes</label><textarea data-f="notes" rows="2">${esc(m.notes)}</textarea>
+    </div>
+    <p class="small muted">Lengths accept <code>14' 3-1/2"</code>, <code>171.5</code> or <code>11-7/8</code>. Changing length moves the end point. Coordinates are inches: x along the house, y up from the slab, z out from the wall.</p>
+    <div class="row">
+      <button id="focusBtn">Zoom to</button>
+      <button id="dupBtn">Duplicate</button>
+      <button id="delBtn" class="danger">Delete</button>
+    </div>`;
+  el.querySelectorAll('[data-f]').forEach(inp => inp.addEventListener('change', () => onField(m, inp)));
+  $('#focusBtn').onclick = () => focusMember(m);
+  $('#dupBtn').onclick = () => {
+    const c = clone(m);
+    c.id = 'm' + Date.now().toString(36);
+    c.name = m.name + ' (copy)';
+    c.start[0] += 24; c.end[0] += 24;
+    sceneData().members.push(c);
+    saveState(); select(c.id);
+  };
+  $('#delBtn').onclick = () => {
+    if (!confirm(`Delete "${m.name}"?`)) return;
+    sceneData().members.splice(sceneData().members.indexOf(m), 1);
+    saveState(); select(null);
+  };
+  refreshPiece(m);
+}
+
+function refreshPiece(m) {
+  const len = memberLength(m);
+  $('#bigLen').textContent = fmtLen(len);
+  $('#bigSec').textContent = `${secText(m)} · ${(TYPES[m.type] || TYPES.other).label}`;
+  $('#vbadge').innerHTML = m.verified ? '<span class="badge ok">Verified</span>' : '<span class="badge est">Estimate</span>';
+  const fin = finished(m);
+  $('#calc').innerHTML = m.wrap ? `
+    <h3>Wrap</h3>
+    <dl class="kv">
+      <dt>Faces</dt><dd>${FACES[m.faces]}</dd>
+      <dt>Finished size</dt><dd>${secText(m, fin.w, fin.d)}</dd>
+      <dt>Boards</dt><dd>${boardsText(m)} @ ${fmtLen(len)}</dd>
+      <dt>Wrap area</dt><dd>${wrapArea(m).toFixed(1)} sq ft</dd>
+    </dl>` : `<p class="small muted">Not marked for wrapping.</p>`;
+  // keep inputs in sync without stomping the one being typed in
+  panes.piece.querySelectorAll('[data-f]').forEach(inp => {
+    if (inp === document.activeElement) return;
+    const f = inp.dataset.f;
+    if (f === 'length') inp.value = fmtLen(len);
+    else if (f === 'width' || f === 'depth') inp.value = fmtIn(m[f]);
+    else if (/^[se]\d$/.test(f)) inp.value = +m[f[0] === 's' ? 'start' : 'end'][+f[1]].toFixed(4);
+  });
+}
+
+function onField(m, inp) {
+  const f = inp.dataset.f;
+  if (f === 'name' || f === 'notes') m[f] = inp.value;
+  else if (f === 'type') m.type = inp.value;
+  else if (f === 'wrap' || f === 'verified') m[f] = inp.checked;
+  else if (f === 'faces') m.faces = +inp.value;
+  else if (f === 'width' || f === 'depth') {
+    const v = parseLen(inp.value);
+    if (v > 0) m[f] = v;
+  } else if (f === 'length') {
+    const v = parseLen(inp.value), fr = frame(m);
+    if (v > 0 && fr) m.end = fr.s.clone().addScaledVector(fr.u, v).toArray().map(n => +n.toFixed(4));
+  } else if (/^[se]\d$/.test(f)) {
+    const v = parseFloat(inp.value);
+    if (Number.isFinite(v)) m[f[0] === 's' ? 'start' : 'end'][+f[1]] = v;
+  }
+  if (f === 'name') panes.piece.querySelector('h2').textContent = m.name;
+  saveState();
+  buildMembers();
+  renderList();
+  refreshPiece(m);
+}
+
+function renderSoffit(s) {
+  const el = panes.piece;
+  const kindOpts = Object.entries(SOFFIT_KINDS).map(([k, t]) => `<option value="${k}" ${s.kind === k ? 'selected' : ''}>${t}</option>`).join('');
+  const num = (f, v, title) => `<input type="number" step="0.0625" data-f="${f}" value="${+(+v).toFixed(4)}" title="${title}">`;
+  el.innerHTML = `
+    <div class="row" style="justify-content:space-between;align-items:center">
+      <h2>${esc(s.name)}</h2>
+      <span id="vbadge"></span>
+    </div>
+    <div class="card" style="margin:8px 0 4px">
+      <div class="big" id="bigLen"></div>
+      <div class="muted" id="bigSec"></div>
+    </div>
+    <div id="calc"></div>
+    <h3>Edit soffit</h3>
+    <div class="form">
+      <label>Name</label><input type="text" data-f="name" value="${esc(s.name)}">
+      <label>Shape</label><select data-f="kind">${kindOpts}</select>
+      <label>Width</label><input type="text" data-f="width" value="${fmtLen(s.width)}" title="Along the house (for a vault: eave to eave)">
+      <label>Depth</label><input type="text" data-f="depth" value="${fmtLen(s.depth)}" title="House wall to the back of the beam">
+      <label>Height</label><input type="text" data-f="y" value="${fmtLen(s.y)}" title="Ceiling height above the slab (vault: at the eaves)">
+      <label class="pitchRow">Pitch</label><div class="pitchRow row" style="align-items:center">${num('pitch', s.pitch || 0, 'Rise per 12" of run')}<span class="muted small">in 12</span></div>
+      <label>Start x / z</label><div class="xyz" style="grid-template-columns:1fr 1fr">${num('x0', s.x0, 'x (in)')}${num('z0', s.z0, 'z (in)')}</div>
+      <label>Verified</label><label class="chk"><input type="checkbox" data-f="verified" ${s.verified ? 'checked' : ''}> Measured on site</label>
+      <label>Notes</label><textarea data-f="notes" rows="2">${esc(s.notes)}</textarea>
+    </div>
+    <p class="small muted">Depth runs from the house wall to the back face of the beam. If the soffit stops at the beam wrap instead, it is ${fmtIn(state.wrapThickness)} shorter (shown above).</p>
+    <div class="row">
+      <button id="focusBtn">Zoom to</button>
+      <button id="dupBtn">Duplicate</button>
+      <button id="delBtn" class="danger">Delete</button>
+    </div>`;
+  el.querySelectorAll('[data-f]').forEach(inp => inp.addEventListener('change', () => onSoffitField(s, inp)));
+  $('#focusBtn').onclick = () => focusSoffit(s);
+  $('#dupBtn').onclick = () => {
+    const c = clone(s);
+    c.id = 's' + Date.now().toString(36);
+    c.name = s.name + ' (copy)';
+    c.x0 += s.width;
+    soffitsOf(sceneData()).push(c);
+    saveState(); select(c.id);
+  };
+  $('#delBtn').onclick = () => {
+    if (!confirm(`Delete "${s.name}"?`)) return;
+    const list = soffitsOf(sceneData());
+    list.splice(list.indexOf(s), 1);
+    saveState(); select(null);
+  };
+  refreshSoffit(s);
+}
+
+function refreshSoffit(s) {
+  const info = soffitInfo(s);
+  $('#bigLen').textContent = `${info.area.toFixed(1)} sq ft`;
+  $('#bigSec').textContent = `${SOFFIT_KINDS[s.kind] || s.kind} · ${fmtLen(s.width)} wide × ${fmtLen(s.depth)} deep`;
+  $('#vbadge').innerHTML = s.verified ? '<span class="badge ok">Verified</span>' : '<span class="badge est">Estimate</span>';
+  const t = state.wrapThickness;
+  $('#calc').innerHTML = `
+    <h3>Soffit panels</h3>
+    <dl class="kv">
+      <dt>Panels</dt><dd>${panelsText(s)}</dd>
+      ${s.kind === 'gable' ? `<dt>Slope length</dt><dd>${fmtLen(info.slope)} (rise ${fmtLen(info.rise)})</dd>` : ''}
+      <dt>Area</dt><dd>${info.area.toFixed(1)} sq ft</dd>
+      <dt>Depth to wrap</dt><dd>${fmtLen(s.depth - t)}</dd>
+    </dl>`;
+  panes.piece.querySelectorAll('.pitchRow').forEach(e => { e.style.display = s.kind === 'gable' ? '' : 'none'; });
+  panes.piece.querySelectorAll('[data-f]').forEach(inp => {
+    if (inp === document.activeElement) return;
+    const f = inp.dataset.f;
+    if (f === 'width' || f === 'depth' || f === 'y') inp.value = fmtLen(s[f]);
+  });
+}
+
+function onSoffitField(s, inp) {
+  const f = inp.dataset.f;
+  if (f === 'name' || f === 'notes' || f === 'kind') s[f] = inp.value;
+  else if (f === 'verified') s.verified = inp.checked;
+  else if (f === 'width' || f === 'depth' || f === 'y') {
+    const v = parseLen(inp.value);
+    if (v > 0) s[f] = v;
+  } else {
+    const v = parseFloat(inp.value);
+    if (Number.isFinite(v)) s[f] = v;
+  }
+  if (f === 'name') panes.piece.querySelector('h2').textContent = s.name;
+  saveState();
+  buildSoffits();
+  buildDims();
+  renderList();
+  refreshSoffit(s);
+}
+
+function addSoffit() {
+  const box = sceneBox();
+  const s = {
+    id: 's' + Date.now().toString(36), name: 'New soffit', kind: 'flat', x0: +box.min.x.toFixed(2), z0: 0,
+    width: 96, depth: 48, y: 108, pitch: 0, verified: false, notes: ''
+  };
+  soffitsOf(sceneData()).push(s);
+  saveState();
+  select(s.id, { focus: true });
+}
+
+function addPiece() {
+  const c = sceneBox().getCenter(new THREE.Vector3());
+  const m = {
+    id: 'm' + Date.now().toString(36), name: 'New piece', type: 'beam', width: 3.5, depth: 7.25,
+    start: [+(c.x - 24).toFixed(2), 60, +c.z.toFixed(2)], end: [+(c.x + 24).toFixed(2), 60, +c.z.toFixed(2)],
+    wrap: true, faces: 4, verified: false, notes: ''
+  };
+  sceneData().members.push(m);
+  saveState();
+  select(m.id, { focus: true });
+}
+
+function renderList() {
+  const el = panes.list;
+  const ms = sceneData().members;
+  const wrapped = ms.filter(m => m.wrap);
+  const rows = ms.map(m => `
+    <tr data-id="${m.id}" class="${m.id === selectedId ? 'sel' : ''}">
+      <td>${esc(m.name)}<br><span class="small muted">${(TYPES[m.type] || TYPES.other).label}</span>
+        ${m.verified ? '' : ' <span class="badge est">est</span>'}</td>
+      <td class="num">${secText(m, m.width, m.depth, fracIn).replace(' × ', ' ×<br>')}</td>
+      <td class="num">${fmtLen(memberLength(m))}</td>
+      <td>${m.wrap ? `<span class="badge wrap">${m.faces}</span>` : '<span class="muted">–</span>'}</td>
+    </tr>`).join('');
+
+  // wrap boards grouped by width
+  const byW = new Map();
+  for (const m of wrapped) {
+    const L = memberLength(m);
+    for (const b of boards(m)) {
+      const key = Math.round(b.w * 16) / 16;
+      const g = byW.get(key) || { pcs: 0, total: 0, longest: 0 };
+      g.pcs += b.n; g.total += b.n * L; g.longest = Math.max(g.longest, L);
+      byW.set(key, g);
+    }
+  }
+  const boardRows = [...byW.entries()].sort((a, b) => b[0] - a[0]).map(([w, g]) => `
+    <tr><td class="num">${fmtIn(w)}</td><td class="num">${g.pcs}</td>
+      <td class="num">${fmtLen(g.longest)}</td><td class="num">${(g.total / 12).toFixed(1)} ft</td></tr>`).join('');
+  const area = wrapped.reduce((a, m) => a + wrapArea(m), 0);
+  const cut = wrapped.map(m => `
+    <tr data-id="${m.id}"><td>${esc(m.name)}</td>
+      <td class="nowrap">${boardsText(m)}</td><td class="num">${fmtLen(memberLength(m))}</td></tr>`).join('');
+
+  const soffits = soffitsOf(sceneData());
+  const soffitArea = soffits.reduce((a, s) => a + soffitInfo(s).area, 0);
+  const soffitRows = soffits.map(s => `
+    <tr data-id="${s.id}" class="${s.id === selectedId ? 'sel' : ''}">
+      <td>${esc(s.name)}<br><span class="small muted">${SOFFIT_KINDS[s.kind] || s.kind}</span>
+        ${s.verified ? '' : ' <span class="badge est">est</span>'}</td>
+      <td class="nowrap">${panelsText(s)}</td>
+      <td class="num">${soffitInfo(s).area.toFixed(1)} sq ft</td>
+    </tr>`).join('');
+
+  el.innerHTML = `
+    <h2>${esc(sceneData().title)}</h2>
+    <table>
+      <thead><tr><th>Piece</th><th class="num">Section</th><th class="num">Length</th><th>Wrap</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div class="row" style="margin-top:8px"><button id="addPiece2">+ Add piece</button></div>
+
+    <h3>Wrap summary</h3>
+    <div class="row" style="align-items:center;margin-bottom:8px">
+      <span class="muted">Wrap board thickness</span>
+      <input type="text" id="wrapT" value="${fmtIn(state.wrapThickness)}" style="width:80px;padding:4px 6px">
+    </div>
+    ${wrapped.length ? `
+    <div class="card kv" style="margin-bottom:10px">
+      <dt>Pieces wrapped</dt><dd>${wrapped.length}</dd>
+      <dt>Total wrap area</dt><dd>${area.toFixed(1)} sq ft</dd>
+    </div>
+    <table>
+      <thead><tr><th>Piece</th><th>Boards</th><th class="num">Length</th></tr></thead>
+      <tbody>${cut}</tbody>
+    </table>
+    <h3>Boards by width</h3>
+    <table>
+      <thead><tr><th class="num">Board width</th><th class="num">Pieces</th><th class="num">Longest</th><th class="num">Total</th></tr></thead>
+      <tbody>${boardRows}</tbody>
+    </table>
+    <p class="small muted">Butt-joint wrap: side boards lap over the edges of the top/bottom boards. Lengths are the raw lumber length — add for end caps, miters and waste.</p>
+    ` : '<p class="muted">Nothing marked for wrapping yet.</p>'}
+
+    <h3>Soffit ceilings</h3>
+    ${soffits.length ? `
+    <table>
+      <thead><tr><th>Ceiling</th><th>Panels</th><th class="num">Area</th></tr></thead>
+      <tbody>${soffitRows}</tbody>
+    </table>
+    <div class="card kv" style="margin-top:8px">
+      <dt>Total soffit area</dt><dd>${soffitArea.toFixed(1)} sq ft</dd>
+    </div>` : '<p class="muted">No soffit ceilings on this porch.</p>'}
+    <div class="row" style="margin-top:8px"><button id="addSoffit">+ Add soffit</button></div>
+
+    <h3>Data</h3>
+    <div class="row">
+      <button id="csvBtn">Export CSV (both porches)</button>
+      <button id="exportBtn">Export data.js</button>
+      <button id="importBtn">Import…</button>
+      <button id="resetBtn" class="danger">Reset to file defaults</button>
+    </div>
+    <p class="small muted">Edits are saved in this browser. "Export data.js" saves a copy you can drop over the project's <code>data.js</code>.</p>`;
+
+  el.querySelectorAll('tr[data-id]').forEach(tr => tr.onclick = () => select(tr.dataset.id, { focus: true }));
+  renderDrawing(); // every data or selection change comes through here
+  $('#addPiece2').onclick = addPiece;
+  $('#addSoffit').onclick = addSoffit;
+  $('#wrapT').onchange = e => {
+    const v = parseLen(e.target.value);
+    if (v >= 0) {
+      state.wrapThickness = v; saveState(); buildMembers(); renderList();
+      const m = findMember(selectedId), s = findSoffit(selectedId);
+      if (m) refreshPiece(m);
+      if (s) refreshSoffit(s);
+    }
+    else e.target.value = fmtIn(state.wrapThickness);
+  };
+  $('#csvBtn').onclick = exportCsv;
+  $('#exportBtn').onclick = () => download('data.js',
+    '// Porch lumber data, exported ' + new Date().toLocaleString() + '. Units: inches.\nwindow.PORCH_DEFAULTS = ' +
+    JSON.stringify(state, null, 2) + ';\n', 'text/javascript');
+  $('#importBtn').onclick = () => $('#importFile').click();
+  $('#resetBtn').onclick = () => {
+    if (!confirm('Discard all edits made in this browser and reload data.js?')) return;
+    state = clone(DEFAULTS); saveState(); selectedId = null;
+    rebuild(); renderPiece(); renderPhotos(); setView('overview');
+  };
+}
+
+function download(name, text, type) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], { type }));
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+function exportCsv() {
+  const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const lines = [['Porch', 'Piece', 'Type', 'Thick / wide (in)', 'Tall / deep (in)', 'Length (in)', 'Length', 'Wrapped', 'Faces',
+    'Finished W (in)', 'Finished D (in)', 'Boards', 'Wrap area (sq ft)', 'Verified', 'Notes'].map(q).join(',')];
+  for (const sc of Object.values(state.scenes)) for (const m of sc.members) {
+    const fin = finished(m), L = memberLength(m);
+    lines.push([sc.title, m.name, (TYPES[m.type] || TYPES.other).label, m.width, m.depth, L.toFixed(3), fmtLen(L),
+      m.wrap ? 'yes' : 'no', m.wrap ? m.faces : '', m.wrap ? fin.w.toFixed(3) : '', m.wrap ? fin.d.toFixed(3) : '',
+      m.wrap ? boardsText(m) + ' @ ' + fmtLen(L) : '', m.wrap ? wrapArea(m).toFixed(2) : '',
+      m.verified ? 'yes' : 'no', m.notes].map(q).join(','));
+  }
+  lines.push('', ['Porch', 'Soffit', 'Shape', 'Width (in)', 'Depth (in)', 'Width', 'Depth', 'Slope length', 'Panels',
+    'Area (sq ft)', 'Verified', 'Notes'].map(q).join(','));
+  for (const sc of Object.values(state.scenes)) for (const s of soffitsOf(sc)) {
+    const info = soffitInfo(s);
+    lines.push([sc.title, s.name, SOFFIT_KINDS[s.kind] || s.kind, s.width.toFixed(3), s.depth.toFixed(3),
+      fmtLen(s.width), fmtLen(s.depth), info.slope ? fmtLen(info.slope) : '', panelsText(s), info.area.toFixed(2),
+      s.verified ? 'yes' : 'no', s.notes].map(q).join(','));
+  }
+  download('porch-lumber.csv', lines.join('\r\n'), 'text/csv');
+}
+$('#importFile').onchange = async e => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  try {
+    const txt = await file.text();
+    const json = JSON.parse(txt.slice(txt.indexOf('{'), txt.lastIndexOf('}') + 1));
+    if (!json.scenes) throw new Error('no "scenes" in file');
+    state = json; saveState(); selectedId = null;
+    if (!state.scenes[ui.scene]) ui.scene = Object.keys(state.scenes)[0];
+    rebuild(); renderPiece(); renderPhotos(); setView('overview');
+  } catch (err) { alert('Could not import: ' + err.message); }
+};
+
+const lightbox = $('#lightbox');
+lightbox.onclick = () => lightbox.classList.remove('on');
+function renderPhotos() {
+  const ph = sceneData().photos || [];
+  panes.photos.innerHTML = `
+    <h2>${esc(sceneData().title)} photos</h2>
+    <p class="small muted">Reference photos (in the project's <code>photos/</code> folder). Click to enlarge.</p>
+    <div class="photos">${ph.map(p => `<img src="${esc(p)}" alt="">`).join('')}</div>`;
+  panes.photos.querySelectorAll('img').forEach(img => img.onclick = () => {
+    lightbox.querySelector('img').src = img.src;
+    lightbox.classList.add('on');
+  });
+}
+
+// ---------- drawings (flat plan / elevation schematics) ----------
+// Each view projects the 3D pieces onto a flat sheet (SVG units = inches; SVG y runs down).
+const DRAW_VIEWS = {
+  plan:  { label: 'Plan (looking down)',           P: v => [v.x, v.z],  near: v => v.y },
+  front: { label: 'Front elevation (from the yard)', P: v => [v.x, -v.y], near: v => v.z },
+  side:  { label: 'Side elevation (from the left)',  P: v => [v.z, -v.y], near: v => -v.x }
+};
+const drawSvg = $('#drawSvg');
+const drawVB = {}; // remembered zoom per scene + view
+
+function hull2(points) {
+  const pts = points.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lo = [], up = [];
+  for (const p of pts) { while (lo.length > 1 && cross(lo[lo.length - 2], lo[lo.length - 1], p) <= 1e-9) lo.pop(); lo.push(p); }
+  for (let i = pts.length - 1; i >= 0; i--) {
+    const p = pts[i];
+    while (up.length > 1 && cross(up[up.length - 2], up[up.length - 1], p) <= 1e-9) up.pop();
+    up.push(p);
+  }
+  lo.pop(); up.pop();
+  return lo.concat(up);
+}
+function boxCorners(m, f) {
+  const out = [];
+  for (const a of [-1, 1]) for (const b of [-1, 1]) for (const c of [-1, 1]) {
+    out.push(f.mid.clone().addScaledVector(f.w, a * m.width / 2).addScaledVector(f.d, b * m.depth / 2).addScaledVector(f.u, c * f.len / 2));
+  }
+  return out;
+}
+const n2 = v => +v.toFixed(2);
+const ptsAttr = pts => pts.map(p => `${n2(p[0])},${n2(p[1])}`).join(' ');
+const svgLine = (a, b, cls) => `<line x1="${n2(a[0])}" y1="${n2(a[1])}" x2="${n2(b[0])}" y2="${n2(b[1])}" class="${cls}"/>`;
+const svgText = (p, str, cls, size, rot = 0) =>
+  `<text x="${n2(p[0])}" y="${n2(p[1])}" font-size="${n2(size)}" class="${cls}" style="stroke-width:${n2(size * 0.35)}px"` +
+  `${rot ? ` transform="rotate(${n2(rot)} ${n2(p[0])} ${n2(p[1])})"` : ''}>${str}</text>`;
+const groupBy = (list, key, tol) => {
+  const groups = [];
+  for (const it of list) {
+    const k = key(it), g = groups.find(g => Math.abs(g.key - k) <= tol);
+    if (g) g.items.push(it); else groups.push({ key: k, items: [it] });
+  }
+  return groups;
+};
+
+function renderDrawing(fit) {
+  if (ui.mode !== 'draw') return;
+  const view = ui.drawView in DRAW_VIEWS ? ui.drawView : 'plan';
+  const V = DRAW_VIEWS[view];
+  const sc = sceneData();
+  document.querySelectorAll('#drawTabs button').forEach(b => b.classList.toggle('on', b.dataset.dview === view));
+  $('#drawTitle').textContent = `${sc.title} · ${V.label}`;
+
+  const size3 = sceneBox().getSize(new THREE.Vector3());
+  const fs = THREE.MathUtils.clamp(Math.max(size3.x, size3.y, size3.z) / 55, 3, 10); // text size, inches
+  const bb = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+  const grow = (x, y, pad = 0) => {
+    bb.x0 = Math.min(bb.x0, x - pad); bb.y0 = Math.min(bb.y0, y - pad);
+    bb.x1 = Math.max(bb.x1, x + pad); bb.y1 = Math.max(bb.y1, y + pad);
+  };
+  const ctxOut = [], body = [], sofOut = [], dims = [], tags = [];
+
+  // Dimension from feature points a -> b, drawn `dist` away along unit vector n.
+  // Labels of short dims sit outside the line; consecutive short ones step out so they do not collide.
+  let shortRun = 0;
+  function dim(a, b, n, dist, label) {
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (len < 0.5) return;
+    const A = [a[0] + n[0] * dist, a[1] + n[1] * dist], B = [b[0] + n[0] * dist, b[1] + n[1] * dist];
+    const gap = fs * 0.3, over = fs * 0.45;
+    for (const [p, q] of [[a, A], [b, B]]) {
+      dims.push(svgLine([p[0] + n[0] * gap, p[1] + n[1] * gap], [q[0] + n[0] * over, q[1] + n[1] * over], 'dw-ext'));
+    }
+    dims.push(svgLine(A, B, 'dw-dl'));
+    const ux = (B[0] - A[0]) / len, uy = (B[1] - A[1]) / len;
+    let tx = ux + n[0], ty = uy + n[1];
+    const tl = Math.hypot(tx, ty) || 1;
+    tx *= fs * 0.4 / tl; ty *= fs * 0.4 / tl;
+    for (const p of [A, B]) dims.push(svgLine([p[0] - tx, p[1] - ty], [p[0] + tx, p[1] + ty], 'dw-tk'));
+    let ang = Math.atan2(uy, ux) * 180 / Math.PI;
+    if (ang > 89.5) ang -= 180; else if (ang < -90.5) ang += 180;
+    const tw = label.length * fs * 0.52;
+    let push = 0;
+    if (len < tw * 1.15) push = fs * (1.1 + 1.2 * (shortRun++ % 3));
+    else shortRun = 0;
+    const mid = [(A[0] + B[0]) / 2 + n[0] * push, (A[1] + B[1]) / 2 + n[1] * push];
+    dims.push(svgText(mid, esc(label), 'dw-dt', fs, ang));
+    grow(A[0], A[1], fs * 0.6); grow(B[0], B[1], fs * 0.6); grow(mid[0], mid[1], tw / 2 + fs * 0.6);
+  }
+
+  // ---- lumber ----
+  const items = [];
+  sc.members.forEach((m, i) => {
+    const f = frame(m);
+    if (!f) return;
+    const vertical = f.vertical;
+    const alongX = !vertical && Math.abs(f.u.x) > 0.99, alongZ = !vertical && Math.abs(f.u.z) > 0.99;
+    let mode = 'fill';
+    if (view === 'plan') {
+      // plan cuts through the posts; beams overhead are dashed; truss pieces are left out
+      if (m.type === 'post' && vertical && Math.min(m.start[1], m.end[1]) < 1) mode = 'fill';
+      else if (m.type === 'beam') mode = 'over';
+      else return;
+    }
+    const pts = hull2(boxCorners(m, f).map(V.P));
+    const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+    items.push({ m, f, tag: i + 1, mode, pts, near: V.near(f.mid), vertical, alongX, alongZ,
+      a: V.P(f.s), b: V.P(f.e), mid: V.P(f.mid),
+      bx0: Math.min(...xs), bx1: Math.max(...xs), by0: Math.min(...ys), by1: Math.max(...ys) });
+  });
+  // painter's order: far pieces first; dashed overhead beams on top in plan
+  items.sort((p, q) => p.mode === q.mode ? p.near - q.near : (p.mode === 'fill' ? -1 : 1));
+  for (const it of items) {
+    body.push(`<polygon points="${ptsAttr(it.pts)}" data-id="${it.m.id}"
+      class="dw-m ${it.m.type} ${it.mode === 'over' ? 'over' : ''} ${it.m.id === selectedId ? 'sel' : ''}"/>`);
+    it.pts.forEach(p => grow(p[0], p[1]));
+    // section size written inside long horizontal beams
+    if (it.alongX && view !== 'side' && it.bx1 - it.bx0 > fs * 14) {
+      it.text = true;
+      body.push(svgText([(it.bx0 + it.bx1) / 2, (it.by0 + it.by1) / 2],
+        `${fracIn(it.m.width)} × ${fracIn(it.m.depth)} LVL`, 'dw-in', fs * 0.72));
+    }
+  }
+
+  // ---- soffits ----
+  const soffits = ui.soffits ? soffitsOf(sc) : [];
+  soffits.forEach((s, i) => {
+    if (!(s.width > 0 && s.depth > 0)) return;
+    const info = soffitInfo(s), cls = `dw-sof ${s.id === selectedId ? 'sel' : ''}`;
+    const x0 = s.x0, x1 = s.x0 + s.width, z0 = s.z0, z1 = s.z0 + s.depth, y = s.y, top = y + (info.rise || 0);
+    let shape, labelAt;
+    if (view === 'plan') {
+      shape = `<polygon points="${ptsAttr([[x0, z0], [x1, z0], [x1, z1], [x0, z1]])}" class="${cls}" data-id="${s.id}"/>`;
+      labelAt = [(x0 + x1) / 2, (z0 + z1) / 2];
+      [[x0, z0], [x1, z1]].forEach(p => grow(...p));
+      sofOut.push(shape);
+      sofOut.push(svgText([labelAt[0], labelAt[1] - fs * 0.7], `S${i + 1} ${esc(s.name)}`, 'dw-sl', fs * 0.8));
+      sofOut.push(svgText([labelAt[0], labelAt[1] + fs * 0.6],
+        `${fmtLen(s.width)} × ${fmtLen(s.depth)}${s.kind === 'gable' ? ' (vaulted)' : ''}`, 'dw-sl', fs * 0.8));
+    } else if (view === 'front') {
+      const pts = s.kind === 'gable' ? [[x0, -y], [(x0 + x1) / 2, -top], [x1, -y]] : [[x0, -y], [x1, -y]];
+      sofOut.push(`<polyline points="${ptsAttr(pts)}" class="${cls} line" data-id="${s.id}"/>`);
+      pts.forEach(p => grow(...p));
+    } else {
+      const pts = s.kind === 'gable' ? [[z0, -y], [z1, -y], [z1, -top], [z0, -top]] : null;
+      sofOut.push(pts ? `<polygon points="${ptsAttr(pts)}" class="${cls}" data-id="${s.id}"/>`
+                      : `<polyline points="${ptsAttr([[z0, -y], [z1, -y]])}" class="${cls} line" data-id="${s.id}"/>`);
+      grow(z0, -y); grow(z1, -top);
+    }
+  });
+
+  const mb = { ...bb }; // extent of the porch itself, before dimensions
+
+  // ---- house context (clipped to the porch) ----
+  if (ui.context) {
+    const ctx = (sc.context || []).slice();
+    const keep = c => view !== 'side' || /house wall|slab|steps/i.test(c.label || '');
+    const boxes = ctx.filter(c => c.type === 'box' && keep(c)).map(c => {
+      const mn = c.min, mx = c.max, corners = [];
+      for (const x of [mn[0], mx[0]]) for (const y of [mn[1], mx[1]]) for (const z of [mn[2], mx[2]]) corners.push(new THREE.Vector3(x, y, z));
+      const center = new THREE.Vector3(...mn).add(new THREE.Vector3(...mx)).multiplyScalar(0.5);
+      return { pts: hull2(corners.map(V.P)), near: V.near(center) };
+    }).sort((p, q) => p.near - q.near);
+    for (const b of boxes) ctxOut.push(`<polygon points="${ptsAttr(b.pts)}" class="dw-ctx"/>`);
+    if (view === 'front') {
+      for (const c of ctx.filter(c => c.type === 'quad')) {
+        ctxOut.push(`<polygon points="${ptsAttr(c.pts.map(p => V.P(new THREE.Vector3(...p))))}" class="dw-roof"/>`);
+      }
+    }
+  }
+  if (view !== 'plan') ctxOut.push(svgLine([mb.x0 - 60, 0], [mb.x1 + 60, 0], 'dw-ground'));
+
+  // ---- dimensions ----
+  const row = fs * 2.6;
+  const fmtSpan = (a, b) => fmtLen(Math.abs(b - a));
+  if (view === 'plan') {
+    const wallXs = [];
+    for (const c of sc.context || []) {
+      if (c.type === 'box' && /wall|wing|return/i.test(c.label || '') && !/^house wall$/i.test(c.label || '')) wallXs.push(c.min[0], c.max[0]);
+    }
+    const posts = items.filter(it => it.m.type === 'post' && it.mode === 'fill');
+    const lines = groupBy(posts, it => it.f.mid.z, 1).sort((a, b) => b.key - a.key);
+    lines.forEach((g, gi) => {
+      const z = g.key;
+      const xs = g.items.map(it => it.f.mid.x);
+      // a beam on this post line that dies into a side wall carries the chain to the wall face
+      for (const it of items) {
+        if (it.m.type !== 'beam' || !it.alongX || Math.abs(it.f.mid.z - z) > 1) continue;
+        for (const x of [it.f.s.x, it.f.e.x]) if (wallXs.some(w => Math.abs(w - x) < 1.5)) xs.push(x);
+      }
+      const sx = [...new Set(xs.map(x => Math.round(x * 16) / 16))].sort((a, b) => a - b);
+      const rowZ = mb.y1 + fs * 3 + gi * row;
+      for (let i = 0; i < sx.length - 1; i++) dim([sx[i], z], [sx[i + 1], z], [0, 1], rowZ - z, fmtSpan(sx[i], sx[i + 1]));
+      const xFirst = Math.min(...g.items.map(it => it.f.mid.x));
+      const colX = mb.x0 - fs * 3 - gi * row;
+      dim([xFirst, 0], [xFirst, z], [-1, 0], xFirst - colX, fmtLen(z));
+    });
+    for (const it of items) {
+      if (it.m.type !== 'beam') continue;
+      const len = fmtLen(it.f.len);
+      if (it.alongX) dim([it.bx0, it.by0], [it.bx1, it.by0], [0, -1], fs * 1.6, len);
+      else if (it.alongZ) dim([it.bx1, it.by0], [it.bx1, it.by1], [1, 0], fs * 1.6, len);
+    }
+  } else if (view === 'front') {
+    const seen = new Set();
+    const vkey = it => `${Math.round(-it.by1 * 4)}:${Math.round(-it.by0 * 4)}`;
+    const verts = items.filter(it => it.vertical);
+    for (const it of verts.filter(it => it.m.type === 'post').sort((a, b) => a.bx0 - b.bx0)) {
+      if (seen.has(vkey(it))) continue;
+      seen.add(vkey(it));
+      dim([it.bx0, it.by1], [it.bx0, it.by0], [-1, 0], fs * 1.5, fmtLen(it.f.len));
+    }
+    for (const it of verts.filter(it => it.m.type !== 'post').sort((a, b) => b.bx1 - a.bx1)) {
+      if (seen.has(vkey(it))) continue;
+      seen.add(vkey(it));
+      dim([it.bx1, it.by1], [it.bx1, it.by0], [1, 0], fs * 1.5, fmtLen(it.f.len));
+    }
+    const sloped = items.filter(it => !it.vertical && !it.alongX && !it.alongZ);
+    if (sloped.length) {
+      const cx = sloped.reduce((a, it) => a + it.mid[0], 0) / sloped.length;
+      const cy = sloped.reduce((a, it) => a + it.mid[1], 0) / sloped.length;
+      for (const it of sloped) {
+        const dx = it.b[0] - it.a[0], dy = it.b[1] - it.a[1], l = Math.hypot(dx, dy);
+        let n = [-dy / l, dx / l];
+        if (n[0] * (it.mid[0] - cx) + n[1] * (it.mid[1] - cy) < 0) n = [-n[0], -n[1]];
+        dim(it.a, it.b, n, it.m.depth / 2 + fs * 1.4, fmtLen(it.f.len));
+      }
+    }
+    // beam lengths in rows under the ground line
+    const rowsEnd = [];
+    for (const it of items.filter(it => it.alongX).sort((a, b) => a.bx0 - b.bx0)) {
+      let r = rowsEnd.findIndex(end => end < it.bx0 - fs * 2);
+      if (r < 0) { r = rowsEnd.length; rowsEnd.push(0); }
+      rowsEnd[r] = it.bx1;
+      dim([it.bx0, it.by1], [it.bx1, it.by1], [0, 1], fs * 3 + r * row - it.by1, fmtLen(it.f.len));
+    }
+    if (isFinite(mb.y0)) dim([mb.x0, 0], [mb.x0, mb.y0], [-1, 0], fs * 5.5, fmtLen(-mb.y0));
+  } else {
+    // from the house wall out: faces of every beam seen end-on
+    const zs = [0];
+    for (const it of items.filter(it => it.alongX)) zs.push(it.bx0, it.bx1);
+    const sz = [...new Set(zs.map(z => Math.round(z * 16) / 16))].sort((a, b) => a - b);
+    for (let i = 0; i < sz.length - 1; i++) dim([sz[i], 0], [sz[i + 1], 0], [0, 1], fs * 3, fmtSpan(sz[i], sz[i + 1]));
+    const seen = new Set();
+    const vkey = it => `${Math.round(-it.by1 * 4)}:${Math.round(-it.by0 * 4)}`;
+    for (const it of items.filter(it => it.vertical || it.alongX).sort((a, b) => b.bx1 - a.bx1)) {
+      if (seen.has(vkey(it))) continue;
+      seen.add(vkey(it));
+      dim([it.bx1, it.by1], [it.bx1, it.by0], [1, 0], fs * 1.5, fmtLen(it.by1 - it.by0));
+    }
+    const ys = new Set();
+    soffits.forEach((s, i) => {
+      if (!(s.width > 0 && s.depth > 0)) return;
+      if (!ys.has(Math.round(s.y))) {
+        dim([s.z0, 0], [s.z0, -s.y], [1, 0], fs * 1.6 + ys.size * row, `S${i + 1} ${fmtLen(s.y)}`);
+        ys.add(Math.round(s.y));
+      }
+      dim([s.z0, -s.y], [s.z0 + s.depth, -s.y], [0, 1], fs * 1.6 + i * row, `S${i + 1} ${fmtLen(s.depth)}`);
+    });
+    if (isFinite(mb.y0)) dim([mb.x0, 0], [mb.x0, mb.y0], [-1, 0], fs * 3, fmtLen(-mb.y0));
+  }
+
+  // ---- numbered tags ----
+  const r = fs * 0.85;
+  const occluders = items.filter(it => it.mode === 'fill');
+  const tagSide = view === 'side' ? -1 : 1; // keep tags off the side the height dims use
+  for (const it of items) {
+    // the truss is detailed in the front elevation; end-on it is just a stack of tags
+    if (view === 'side' && it.m.type !== 'post' && it.m.type !== 'beam') continue;
+    const hidden = occluders.some(o => o !== it && o.near > it.near + 0.01 &&
+      o.bx0 <= it.bx0 + 0.01 && o.bx1 >= it.bx1 - 0.01 && o.by0 <= it.by0 + 0.01 && o.by1 >= it.by1 - 0.01);
+    if (hidden) continue;
+    const cx = (it.bx0 + it.bx1) / 2, cy = (it.by0 + it.by1) / 2;
+    const w = it.bx1 - it.bx0, h = it.by1 - it.by0;
+    let p = [cx, cy];
+    if (it.text) p = [it.bx0 + r * 2.2, cy];
+    else if (it.vertical && h > r * 6 && w < r * 2.6) {
+      const edge = tagSide > 0 ? it.bx1 : it.bx0;
+      p = [edge + tagSide * r * 1.8, cy];
+      tags.push(svgLine([edge, cy], p, 'dw-lead'));
+    }
+    else if (w < r * 2.6 || h < r * 2.6) {
+      // small pieces get a leader: toward the yard in plan (beam lengths sit house-side), up-right elsewhere
+      p = view === 'plan' ? [it.bx1 + r * 1.6, it.by1 + r * 1.6] : [it.bx1 + r * 1.6, it.by0 - r * 1.6];
+      tags.push(svgLine([cx, cy], p, 'dw-lead'));
+    }
+    tags.push(`<g class="dw-tag ${it.m.id === selectedId ? 'sel' : ''}" data-id="${it.m.id}"><circle cx="${n2(p[0])}" cy="${n2(p[1])}" r="${n2(r)}"/>` +
+      `<text x="${n2(p[0])}" y="${n2(p[1])}" font-size="${n2(fs * 0.85)}">${it.tag}</text></g>`);
+    grow(p[0], p[1], r);
+  }
+
+  if (!isFinite(bb.x0)) { bb.x0 = bb.y0 = 0; bb.x1 = bb.y1 = 100; }
+  const pad = fs * 2.5;
+  const clip = `<clipPath id="dwclip"><rect x="${n2(mb.x0 - 36)}" y="${n2(mb.y0 - 36)}" width="${n2(mb.x1 - mb.x0 + 72)}" height="${n2(mb.y1 - mb.y0 + 72)}"/></clipPath>`;
+  drawSvg.innerHTML = `<defs>${clip}</defs><g clip-path="url(#dwclip)">${ctxOut.join('')}</g>` +
+    `<g>${body.join('')}</g><g>${sofOut.join('')}</g><g>${dims.join('')}</g><g>${tags.join('')}</g>`;
+  const key = ui.scene + ':' + view;
+  if (fit || !drawVB[key]) drawVB[key] = { x: bb.x0 - pad, y: bb.y0 - pad, w: bb.x1 - bb.x0 + pad * 2, h: bb.y1 - bb.y0 + pad * 2 };
+  setDrawVB(drawVB[key]);
+  renderLegend(sc);
+}
+
+function setDrawVB(v) {
+  drawVB[ui.scene + ':' + ui.drawView] = v;
+  drawSvg.setAttribute('viewBox', `${n2(v.x)} ${n2(v.y)} ${n2(v.w)} ${n2(v.h)}`);
+}
+
+function renderLegend(sc) {
+  const faceShort = { 4: '4 sides', 3: '3 sides', 2: '2 sides', 1: '1 face' };
+  const rows = sc.members.map((m, i) => {
+    const fin = finished(m);
+    return `<tr data-id="${m.id}" class="${m.id === selectedId ? 'sel' : ''}">
+      <td><span class="tagno">${i + 1}</span></td>
+      <td>${esc(m.name)}${m.verified ? '' : ' <span class="badge est">est</span>'}</td>
+      <td class="nowrap">${secText(m)}</td>
+      <td class="num">${fmtLen(memberLength(m))}</td>
+      <td class="nowrap">${m.wrap ? `${faceShort[m.faces] || ''} → ${secText(m, fin.w, fin.d)}` : '<span class="muted">not wrapped</span>'}</td>
+    </tr>`;
+  }).join('');
+  const srows = soffitsOf(sc).map((s, i) => `
+    <tr data-id="${s.id}" class="${s.id === selectedId ? 'sel' : ''}">
+      <td><span class="tagno">S${i + 1}</span></td>
+      <td>${esc(s.name)}${s.verified ? '' : ' <span class="badge est">est</span>'}</td>
+      <td class="nowrap">${SOFFIT_KINDS[s.kind] || s.kind}</td>
+      <td class="num nowrap">${panelsText(s)}</td>
+      <td class="nowrap">${soffitInfo(s).area.toFixed(1)} sq ft</td>
+    </tr>`).join('');
+  const el = $('#drawLegend');
+  el.innerHTML = `
+    <table>
+      <thead><tr><th>#</th><th>Piece</th><th>Size</th><th class="num">Length</th><th>Wrap (${fmtIn(state.wrapThickness)} boards) → finished</th></tr></thead>
+      <tbody>${rows}${srows}</tbody>
+    </table>
+    <p class="small muted" style="margin:6px 0 0">Feet-inches. Post spacing is center to center; depths are from the house wall.
+      Pieces marked <span class="badge est">est</span> are not measured yet.</p>`;
+  el.querySelectorAll('tr[data-id]').forEach(tr => tr.onclick = () => select(tr.dataset.id));
+}
+
+// zoom with the wheel, drag to pan, click a piece to select it
+let dwDrag = null;
+const dwScale = v => {
+  const r = drawSvg.getBoundingClientRect();
+  return { s: Math.max(v.w / r.width, v.h / r.height), r };
+};
+drawSvg.addEventListener('pointerdown', e => {
+  const v = drawVB[ui.scene + ':' + ui.drawView];
+  if (!v || e.button !== 0) return;
+  dwDrag = { x: e.clientX, y: e.clientY, v: { ...v }, moved: false, id: e.target.closest('[data-id]')?.dataset.id || null };
+  drawSvg.setPointerCapture(e.pointerId);
+});
+drawSvg.addEventListener('pointermove', e => {
+  if (!dwDrag) return;
+  const dx = e.clientX - dwDrag.x, dy = e.clientY - dwDrag.y;
+  if (!dwDrag.moved && Math.hypot(dx, dy) < 4) return;
+  dwDrag.moved = true;
+  drawSvg.classList.add('panning');
+  const { s } = dwScale(dwDrag.v);
+  setDrawVB({ ...dwDrag.v, x: dwDrag.v.x - dx * s, y: dwDrag.v.y - dy * s });
+});
+drawSvg.addEventListener('pointerup', () => {
+  if (!dwDrag) return;
+  const d = dwDrag;
+  dwDrag = null;
+  drawSvg.classList.remove('panning');
+  if (!d.moved) select(d.id);
+});
+drawSvg.addEventListener('wheel', e => {
+  e.preventDefault();
+  const v = drawVB[ui.scene + ':' + ui.drawView];
+  if (!v) return;
+  const k = e.deltaY > 0 ? 1.15 : 1 / 1.15;
+  const { s, r } = dwScale(v);
+  const offX = (r.width - v.w / s) / 2, offY = (r.height - v.h / s) / 2;
+  const ux = v.x + (e.clientX - r.left - offX) * s, uy = v.y + (e.clientY - r.top - offY) * s;
+  setDrawVB({ x: ux - (ux - v.x) * k, y: uy - (uy - v.y) * k, w: v.w * k, h: v.h * k });
+}, { passive: false });
+drawSvg.addEventListener('dblclick', () => renderDrawing(true));
+
+// ---------- header controls ----------
+function setScene(s, first) {
+  ui.scene = s; saveUi();
+  selectedId = null; tapePending = null;
+  document.querySelectorAll('#sceneTabs button').forEach(b => b.classList.toggle('on', b.dataset.scene === s));
+  rebuild(); renderPiece(); renderPhotos();
+  setView('overview', first);
+}
+document.querySelectorAll('#sceneTabs button').forEach(b => b.onclick = () => setScene(b.dataset.scene));
+document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => setView(b.dataset.view));
+const labelMode = $('#labelMode'), ctxToggle = $('#ctxToggle'), wrapToggle = $('#wrapToggle'), tapeBtn = $('#tapeBtn');
+labelMode.value = ui.labels;
+ctxToggle.checked = ui.context;
+wrapToggle.checked = ui.wrapPreview;
+labelMode.onchange = () => { ui.labels = labelMode.value; saveUi(); buildMembers(); };
+ctxToggle.onchange = () => { ui.context = ctxToggle.checked; saveUi(); buildContext(); renderDrawing(); };
+const soffitToggle = $('#soffitToggle');
+soffitToggle.checked = ui.soffits;
+soffitToggle.onchange = () => { ui.soffits = soffitToggle.checked; saveUi(); buildSoffits(); buildDims(); renderDrawing(); };
+
+function setMode(mode) {
+  ui.mode = mode; saveUi();
+  if (mode === 'draw' && tapeMode) setTape(false);
+  document.body.classList.toggle('drawmode', mode === 'draw');
+  vp.classList.toggle('drawing', mode === 'draw');
+  document.querySelectorAll('#modeTabs button').forEach(b => b.classList.toggle('on', b.dataset.mode === mode));
+  renderDrawing();
+}
+document.querySelectorAll('#modeTabs button').forEach(b => b.onclick = () => setMode(b.dataset.mode));
+document.querySelectorAll('#drawTabs button').forEach(b => b.onclick = () => { ui.drawView = b.dataset.dview; saveUi(); renderDrawing(); });
+$('#drawFit').onclick = () => renderDrawing(true);
+$('#drawPrint').onclick = () => print();
+wrapToggle.onchange = () => { ui.wrapPreview = wrapToggle.checked; saveUi(); buildMembers(); };
+function setTape(on) {
+  tapeMode = on;
+  tapeBtn.classList.toggle('on', on);
+  vp.classList.toggle('tape', on);
+  if (!on) { tapePending = null; buildTapes(); }
+}
+tapeBtn.onclick = () => setTape(!tapeMode);
+$('#tapeClear').onclick = () => { tapes[ui.scene] = []; tapePending = null; buildTapes(); };
+
+resize();
+setPane(ui.pane);
+setScene(ui.scene, true);
+setMode(ui.mode);
+</script>
+</body>
+</html>
