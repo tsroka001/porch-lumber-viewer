@@ -43,6 +43,8 @@
   button:hover { border-color: var(--accent); }
   button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
   button.danger:hover { border-color: #d14b4b; color: #d14b4b; }
+  button:disabled { opacity: .4; cursor: default; }
+  button:disabled:hover { border-color: var(--line); }
   select { padding: 4px 6px; }
   label.chk { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; user-select: none; }
   .grow { flex: 1; }
@@ -227,6 +229,11 @@
     <button data-mode="3d">3D</button>
     <button data-mode="draw" title="Flat plan and elevation drawings with every dimension">Drawings</button>
   </div>
+  <div class="seg" id="historyBtns">
+    <button id="undoBtn" disabled>↶ Undo</button>
+    <button id="redoBtn" disabled>↷ Redo</button>
+    <button id="resetAllBtn" class="danger" title="Put everything back to the saved data file (can be undone)">Reset</button>
+  </div>
   <div class="views only3d">
     <button data-view="overview" title="Fit everything">Overview</button>
     <button data-view="street" title="Standing in the yard">Street</button>
@@ -315,10 +322,22 @@ function loadState() {
   } catch (e) {}
   return clone(DEFAULTS);
 }
+// Every saveState() records the previous version, so any change (including
+// adding, deleting or resetting pieces) can be undone.
+const undoStack = [], redoStack = [];
 function saveState() {
-  try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) {}
+  const now = JSON.stringify(state);
+  if (now !== lastSaved) {
+    undoStack.push(lastSaved);
+    if (undoStack.length > 100) undoStack.shift();
+    redoStack.length = 0;
+    lastSaved = now;
+  }
+  try { localStorage.setItem(STORE_KEY, now); } catch (e) {}
+  updateHistoryButtons();
 }
 let state = loadState();
+let lastSaved = JSON.stringify(state);
 
 const ui = { scene: 'front', pane: 'piece', labels: 'wrap', context: true, wrapPreview: false, soffits: true,
   mode: '3d', drawView: 'plan' };
@@ -798,6 +817,11 @@ addEventListener('keydown', e => {
     return;
   }
   if (typing(e)) return;
+  if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+    const k = e.key.toLowerCase();
+    if (k === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return; }
+    if (k === 'y' || (k === 'z' && e.shiftKey)) { e.preventDefault(); redo(); return; }
+  }
   keys.add(e.code);
   if (e.code.startsWith('Arrow')) e.preventDefault();
 });
@@ -1208,11 +1232,45 @@ function renderList() {
     '// Porch lumber data, exported ' + new Date().toLocaleString() + '. Units: inches.\nwindow.PORCH_DEFAULTS = ' +
     JSON.stringify(state, null, 2) + ';\n', 'text/javascript');
   $('#importBtn').onclick = () => $('#importFile').click();
-  $('#resetBtn').onclick = () => {
-    if (!confirm('Discard all edits made in this browser and reload data.js?')) return;
-    state = clone(DEFAULTS); saveState(); selectedId = null;
-    rebuild(); renderPiece(); renderPhotos(); setView('overview');
-  };
+  $('#resetBtn').onclick = resetToDefaults;
+}
+
+// ---------- undo / redo / reset ----------
+function applySnapshot(json) {
+  state = JSON.parse(json);
+  lastSaved = json;
+  try { localStorage.setItem(STORE_KEY, json); } catch (e) {}
+  if (!state.scenes[ui.scene]) ui.scene = Object.keys(state.scenes)[0];
+  if (selectedId && !findMember(selectedId) && !findSoffit(selectedId)) selectedId = null;
+  rebuild(); renderPiece(); renderPhotos();
+  updateHistoryButtons();
+}
+function undo() {
+  if (!undoStack.length) return;
+  redoStack.push(lastSaved);
+  applySnapshot(undoStack.pop());
+}
+function redo() {
+  if (!redoStack.length) return;
+  undoStack.push(lastSaved);
+  applySnapshot(redoStack.pop());
+}
+function resetToDefaults() {
+  if (!confirm('Put every piece and measurement back to the saved data file? You can undo this.')) return;
+  state = clone(DEFAULTS);
+  selectedId = null;
+  saveState();
+  rebuild(); renderPiece(); renderPhotos();
+  setView('overview');
+  renderDrawing(true);
+}
+function updateHistoryButtons() {
+  const u = document.getElementById('undoBtn'), r = document.getElementById('redoBtn');
+  if (!u) return;
+  u.disabled = !undoStack.length;
+  r.disabled = !redoStack.length;
+  u.title = undoStack.length ? `Undo the last change (Ctrl+Z) · ${undoStack.length} available` : 'Nothing to undo';
+  r.title = redoStack.length ? 'Redo (Ctrl+Y)' : 'Nothing to redo';
 }
 
 function download(name, text, type) {
@@ -1690,6 +1748,11 @@ function setTape(on) {
 }
 tapeBtn.onclick = () => setTape(!tapeMode);
 $('#tapeClear').onclick = () => { tapes[ui.scene] = []; tapePending = null; buildTapes(); };
+
+$('#undoBtn').onclick = undo;
+$('#redoBtn').onclick = redo;
+$('#resetAllBtn').onclick = resetToDefaults;
+updateHistoryButtons();
 
 resize();
 setPane(ui.pane);
