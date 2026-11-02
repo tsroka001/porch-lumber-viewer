@@ -17,8 +17,8 @@
  * "Export data.js" to write them back to this file.
  */
 window.PORCH_DEFAULTS = {
-  "version": 14,
-  "wrapThickness": 0.75,
+  "version": 15,
+  "wrapThickness": 0.5,
   "scenes": {
     "front": {
       "title": "Front porch",

@@ -197,7 +197,7 @@
     :root {
       --paper: #fff; --ink: #000; --dim: #a0441c; --dw-ctx: #f1f1f1; --dw-ctx-line: #bbb; --soffit: #1d5fb0;
       --f-post: #f3f5e8; --f-beam: #f8eedb; --f-timber: #efe5d8; --f-other: #f4efe7;
-      --panel: #fff; --line: #ccc; --text: #000; --muted: #444;
+      --panel: #fff; --panel-2: #f5f5f5; --line: #ccc; --text: #000; --muted: #444;
     }
     body { overflow: visible; height: auto; display: block; }
     header, aside, .dw-toolbar button, .dw-toolbar .seg { display: none !important; }
@@ -206,7 +206,18 @@
     #drawing { position: static; display: flex; }
     #drawSvg { height: 62vh; flex: none; }
     .dw-legend { max-height: none; overflow: visible; }
+    body.printing-all > *:not(#printSheets) { display: none !important; }
+    body.printing-all #printSheets { display: block; }
   }
+  @page { size: letter landscape; margin: 0.35in; }
+  #printSheets { display: none; color: var(--text); background: var(--paper); }
+  .sheet { break-after: page; height: 7.7in; display: flex; flex-direction: column; }
+  .sheet:last-child { break-after: auto; }
+  .sheet.text { height: auto; font-size: 11px; }
+  .sheet.text table { font-size: 11px; margin-bottom: 6px; }
+  .sheet.text h3 { margin: 12px 0 4px; }
+  .sheet-head { display: flex; justify-content: space-between; border-bottom: 1.5px solid #000; padding-bottom: 4px; margin-bottom: 6px; font-size: 13px; }
+  .sheet-svg { flex: 1; min-height: 0; width: 100%; }
 
   @media (max-width: 860px) {
     body { overflow: auto; height: auto; }
@@ -234,6 +245,7 @@
     <button id="redoBtn" disabled>↷ Redo</button>
     <button id="resetAllBtn" class="danger" title="Put everything back to the saved data file (can be undone)">Reset</button>
   </div>
+  <button id="printAllBtn" title="Plan, front and side drawings of both porches plus the ChamClad list. Choose Save as PDF in the print dialog">Print all / PDF</button>
   <div class="views only3d">
     <button data-view="overview" title="Fit everything">Overview</button>
     <button data-view="street" title="Standing in the yard">Street</button>
@@ -275,7 +287,8 @@
         <span class="dw-title" id="drawTitle"></span>
         <span class="grow"></span>
         <button id="drawFit" title="Fit the drawing to the window">Fit</button>
-        <button id="drawPrint" title="Print, or choose Save as PDF">Print / PDF</button>
+        <button id="drawPrint" title="Print this view, or choose Save as PDF">Print view</button>
+        <button id="drawPrintAll" title="Every drawing of both porches plus the ChamClad list. Choose Save as PDF in the print dialog">Print all / PDF</button>
       </div>
       <svg id="drawSvg" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet"></svg>
       <div class="dw-legend" id="drawLegend"></div>
@@ -292,6 +305,7 @@
     <div class="pane" id="pane-photos"></div>
   </aside>
 </main>
+<div id="printSheets"></div>
 
 <div id="lightbox"><img alt=""></div>
 <input type="file" id="importFile" accept=".js,.json" hidden>
@@ -716,9 +730,9 @@ let tween = null;
 function flyTo(pos, target, ms = 650) {
   tween = { p0: camera.position.clone(), t0: controls.target.clone(), p1: pos, t1: target, start: performance.now(), ms };
 }
-function sceneBox() {
+function sceneBox(sc = sceneData()) {
   const box = new THREE.Box3();
-  for (const m of sceneData().members) {
+  for (const m of sc.members) {
     box.expandByPoint(new THREE.Vector3(...m.start));
     box.expandByPoint(new THREE.Vector3(...m.end));
   }
@@ -1175,6 +1189,7 @@ function renderList() {
     <div class="row" style="align-items:center;margin-bottom:8px">
       <span class="muted">Wrap board thickness</span>
       <input type="text" id="wrapT" value="${fmtIn(state.wrapThickness)}" style="width:80px;padding:4px 6px">
+      <span class="small muted">ChamClad exterior panels are ½"</span>
     </div>
     ${wrapped.length ? `
     <div class="card kv" style="margin-bottom:10px">
@@ -1203,6 +1218,9 @@ function renderList() {
       <dt>Total soffit area</dt><dd>${soffitArea.toFixed(1)} sq ft</dd>
     </div>` : '<p class="muted">No soffit ceilings on this porch.</p>'}
     <div class="row" style="margin-top:8px"><button id="addSoffit">+ Add soffit</button></div>
+
+    ${chamcladHtml(sceneData())}
+    <details class="card" style="margin-top:8px"><summary>ChamClad product notes and specs</summary>${CHAMCLAD_SPECS}</details>
 
     <h3>Data</h3>
     <div class="row">
@@ -1377,12 +1395,22 @@ const groupBy = (list, key, tol) => {
 function renderDrawing(fit) {
   if (ui.mode !== 'draw') return;
   const view = ui.drawView in DRAW_VIEWS ? ui.drawView : 'plan';
-  const V = DRAW_VIEWS[view];
   const sc = sceneData();
   document.querySelectorAll('#drawTabs button').forEach(b => b.classList.toggle('on', b.dataset.dview === view));
-  $('#drawTitle').textContent = `${sc.title} · ${V.label}`;
+  $('#drawTitle').textContent = `${sc.title} · ${DRAW_VIEWS[view].label}`;
+  const d = drawingSvg(sc, view, 'dwclip');
+  drawSvg.innerHTML = d.html;
+  const key = ui.scene + ':' + view;
+  if (fit || !drawVB[key]) drawVB[key] = d.vb;
+  setDrawVB(drawVB[key]);
+  $('#drawLegend').innerHTML = legendHtml(sc);
+  $('#drawLegend').querySelectorAll('tr[data-id]').forEach(tr => tr.onclick = () => select(tr.dataset.id));
+}
 
-  const size3 = sceneBox().getSize(new THREE.Vector3());
+// SVG markup for one view of one porch, plus the viewBox that fits it.
+function drawingSvg(sc, view, clipId) {
+  const V = DRAW_VIEWS[view];
+  const size3 = sceneBox(sc).getSize(new THREE.Vector3());
   const fs = THREE.MathUtils.clamp(Math.max(size3.x, size3.y, size3.z) / 55, 3, 10); // text size, inches
   const bb = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
   const grow = (x, y, pad = 0) => {
@@ -1622,13 +1650,12 @@ function renderDrawing(fit) {
 
   if (!isFinite(bb.x0)) { bb.x0 = bb.y0 = 0; bb.x1 = bb.y1 = 100; }
   const pad = fs * 2.5;
-  const clip = `<clipPath id="dwclip"><rect x="${n2(mb.x0 - 36)}" y="${n2(mb.y0 - 36)}" width="${n2(mb.x1 - mb.x0 + 72)}" height="${n2(mb.y1 - mb.y0 + 72)}"/></clipPath>`;
-  drawSvg.innerHTML = `<defs>${clip}</defs><g clip-path="url(#dwclip)">${ctxOut.join('')}</g>` +
-    `<g>${body.join('')}</g><g>${sofOut.join('')}</g><g>${dims.join('')}</g><g>${tags.join('')}</g>`;
-  const key = ui.scene + ':' + view;
-  if (fit || !drawVB[key]) drawVB[key] = { x: bb.x0 - pad, y: bb.y0 - pad, w: bb.x1 - bb.x0 + pad * 2, h: bb.y1 - bb.y0 + pad * 2 };
-  setDrawVB(drawVB[key]);
-  renderLegend(sc);
+  const clip = `<clipPath id="${clipId}"><rect x="${n2(mb.x0 - 36)}" y="${n2(mb.y0 - 36)}" width="${n2(mb.x1 - mb.x0 + 72)}" height="${n2(mb.y1 - mb.y0 + 72)}"/></clipPath>`;
+  return {
+    html: `<defs>${clip}</defs><g clip-path="url(#${clipId})">${ctxOut.join('')}</g>` +
+      `<g>${body.join('')}</g><g>${sofOut.join('')}</g><g>${dims.join('')}</g><g>${tags.join('')}</g>`,
+    vb: { x: bb.x0 - pad, y: bb.y0 - pad, w: bb.x1 - bb.x0 + pad * 2, h: bb.y1 - bb.y0 + pad * 2 }
+  };
 }
 
 function setDrawVB(v) {
@@ -1636,7 +1663,7 @@ function setDrawVB(v) {
   drawSvg.setAttribute('viewBox', `${n2(v.x)} ${n2(v.y)} ${n2(v.w)} ${n2(v.h)}`);
 }
 
-function renderLegend(sc) {
+function legendHtml(sc) {
   const faceShort = { 4: '4 sides', 3: '3 sides', 2: '2 sides', 1: '1 face' };
   const rows = sc.members.map((m, i) => {
     const fin = finished(m);
@@ -1656,15 +1683,181 @@ function renderLegend(sc) {
       <td class="num nowrap">${panelsText(s)}</td>
       <td class="nowrap">${soffitInfo(s).area.toFixed(1)} sq ft</td>
     </tr>`).join('');
-  const el = $('#drawLegend');
-  el.innerHTML = `
+  return `
     <table>
-      <thead><tr><th>#</th><th>Piece</th><th>Size</th><th class="num">Length</th><th>Wrap (${fmtIn(state.wrapThickness)} boards) → finished</th></tr></thead>
+      <thead><tr><th>#</th><th>Piece</th><th>Size</th><th class="num">Length</th><th>Wrap (${fmtIn(state.wrapThickness)} ChamClad) → finished</th></tr></thead>
       <tbody>${rows}${srows}</tbody>
     </table>
     <p class="small muted" style="margin:6px 0 0">Feet-inches. Post spacing is center to center; depths are from the house wall.
       Pieces marked <span class="badge est">est</span> are not measured yet.</p>`;
-  el.querySelectorAll('tr[data-id]').forEach(tr => tr.onclick = () => select(tr.dataset.id));
+}
+
+// ---------- ChamClad ----------
+// From ICC-ES ESR-4560 (reissued 2026), the ChamClad USA brochure and the ChamClad EPDs.
+// Check against the current catalogue before ordering.
+const CC = {
+  wrapPanel: 12,      // 12" exterior panel (smooth/seamless), ripped to each face width
+  soffitPanel: 6,     // 6" ceiling & soffit panel, run from the house wall out to the beam
+  stock: [144, 240],  // 12' and 20' standard lengths (6" panels also come in 30'; custom lengths on request)
+  kerf: 0.125,
+};
+const ftIn = n => n % 12 ? `${Math.floor(n / 12)}' ${n % 12}"` : `${n / 12}'`;
+const stockFor = L => CC.stock.find(s => L <= s) || null;
+// First-fit decreasing: how many sticks of `cap` it takes to cut every length in `lens`.
+function sticks(lens, cap) {
+  const bins = [];
+  for (const L of lens.slice().sort((a, b) => b - a)) {
+    const i = bins.findIndex(r => r >= L + CC.kerf);
+    if (i >= 0) bins[i] -= L + CC.kerf; else bins.push(cap - L);
+  }
+  return bins.length;
+}
+
+function chamclad(sc) {
+  const wrapped = sc.members.filter(m => m.wrap);
+  // wrap faces grouped by width, cut as rips from the 12" panel
+  const byW = new Map();
+  let cornerLen = 0;
+  for (const m of wrapped) {
+    const L = memberLength(m);
+    for (const b of boards(m)) {
+      const key = Math.round(b.w * 16) / 16;
+      const g = byW.get(key) || { w: key, lens: [] };
+      for (let i = 0; i < b.n; i++) g.lens.push(L);
+      byW.set(key, g);
+    }
+    cornerLen += ({ 4: 4, 3: 2 }[m.faces] || 0) * L;
+  }
+  const tot = {}, custom = [];
+  const wrapRows = [...byW.values()].sort((a, b) => b.w - a.w).map(g => {
+    const rips = Math.floor((CC.wrapPanel + CC.kerf) / (g.w + CC.kerf));
+    const row = { w: g.w, pcs: g.lens.length, longest: Math.max(...g.lens), rips, panels: {} };
+    if (!rips) return row;
+    // faces longer than the longest stock are spliced from full lengths plus the remainder
+    const max = CC.stock[CC.stock.length - 1], cuts = [];
+    for (const L of g.lens) {
+      if (L <= max) { cuts.push(L); continue; }
+      custom.push({ w: g.w, L, joints: Math.ceil(L / max) - 1 });
+      for (let r = L; r > 0; r -= max) cuts.push(Math.min(r, max));
+    }
+    for (const s of CC.stock) {
+      const lens = cuts.filter(L => stockFor(L) === s);
+      if (lens.length) row.panels[s] = Math.ceil(sticks(lens, s) / rips);
+    }
+    for (const [s, n] of Object.entries(row.panels)) tot[s] = (tot[s] || 0) + n;
+    return row;
+  });
+  // soffits: courses of 6" panel, each as long as the soffit is deep
+  const sof = soffitsOf(sc).filter(s => s.width > 0 && s.depth > 0).map(s => {
+    const info = soffitInfo(s);
+    let courses = 0, perim = 0, run = 0;
+    for (const p of info.pieces) { courses += p.n * Math.ceil(p.a / CC.soffitPanel); perim += p.n * 2 * (p.a + p.b); run = p.b; }
+    const stock = stockFor(run);
+    const per = stock ? Math.floor((stock + CC.kerf) / (run + CC.kerf)) : 0;
+    return { s, courses, run, stock, panels: per ? Math.ceil(courses / per) : null, jtrim: perim, area: info.area };
+  });
+  return { wrapped, wrapRows, tot, custom, cornerLen, sof };
+}
+
+function chamcladHtml(sc) {
+  const c = chamclad(sc);
+  const stockCols = CC.stock.map(s => `<th class="num">${ftIn(s)} panels</th>`).join('');
+  const wrapRows = c.wrapRows.map(r => `<tr>
+      <td class="num">${fmtIn(r.w)}</td><td class="num">${r.pcs}</td><td class="num">${fmtLen(r.longest)}</td>
+      <td class="num">${r.rips || '<b>wider than 12"</b>'}</td>
+      ${CC.stock.map(s => `<td class="num">${r.panels[s] || ''}</td>`).join('')}</tr>`).join('');
+  const sofRows = c.sof.map(o => `<tr>
+      <td>${esc(o.s.name)}</td><td class="num">${o.courses}</td><td class="num">${fmtLen(o.run)}</td>
+      <td class="num">${o.panels ? `${o.panels} × ${ftIn(o.stock)}` : 'custom length'}</td>
+      <td class="num">${(o.jtrim / 12).toFixed(0)} ft</td></tr>`).join('');
+  const jtrim = c.sof.reduce((a, o) => a + o.jtrim, 0);
+  const totText = CC.stock.filter(s => c.tot[s]).map(s => `${c.tot[s]} × ${ftIn(s)}`).join(' + ') || '–';
+  return `
+    <h3>ChamClad estimate</h3>
+    ${c.wrapped.length ? `
+    <p class="small muted" style="margin:0 0 6px">Wrap faces ripped from the ${CC.wrapPanel}" exterior panel (${fmtIn(state.wrapThickness)} thick), one length per face, no splices.</p>
+    <table>
+      <thead><tr><th class="num">Face width</th><th class="num">Faces</th><th class="num">Longest</th><th class="num">Rips / panel</th>${stockCols}</tr></thead>
+      <tbody>${wrapRows}</tbody>
+    </table>
+    <div class="card kv" style="margin:8px 0">
+      <dt>12" wrap panels</dt><dd>${totText}</dd>
+      <dt>Outside corners</dt><dd>${(c.cornerLen / 12).toFixed(0)} ft (2pc outside corner trim, or mitred)</dd>
+    </div>
+    ${c.custom.length ? `<p class="small"><b>Longer than 20':</b> ${c.custom.map(x => `${fmtIn(x.w)} × ${fmtLen(x.L)}`).join(', ')}.
+      Counted above as 20' panels with ${c.custom[0].joints === 1 ? 'one joint' : 'joints'} each; land joints over a post and cover them with H-trim,
+      or ask ChamClad for a custom length.</p>` : ''}` : ''}
+    ${c.sof.length ? `
+    <p class="small muted" style="margin:0 0 6px">Soffits in the ${CC.soffitPanel}" ceiling &amp; soffit panel, running from the house wall to the beam.</p>
+    <table>
+      <thead><tr><th>Ceiling</th><th class="num">Courses</th><th class="num">Each</th><th class="num">Panels</th><th class="num">J-trim</th></tr></thead>
+      <tbody>${sofRows}</tbody>
+    </table>
+    <div class="card kv" style="margin:8px 0">
+      <dt>J-trim, soffit edges</dt><dd>${(jtrim / 12).toFixed(0)} ft ≈ ${Math.ceil(jtrim * 1.1 / 144)} × 12'</dd>
+    </div>` : ''}
+    <p class="small muted">Counts are a starting point, with no allowance for waste, end caps or mistakes; add about 10%.
+      Confirm the panels' face coverage with your ChamClad dealer.</p>`;
+}
+
+const CHAMCLAD_SPECS = `
+  <h3>ChamClad: what this plan assumes</h3>
+  <p class="small">All wraps and soffits are planned in ChamClad: extruded PVC panels with a laminated woodgrain or colour film
+    (ASTM D3679, ICC-ES ESR-4560). Made by ChamClad, Edmonton, AB · 780-454-4430 · chamclad.com.</p>
+  <table>
+    <thead><tr><th>Product</th><th>Width</th><th>Thickness</th><th>Lengths</th></tr></thead>
+    <tbody>
+      <tr><td>Exterior wall panel</td><td>6"</td><td>½"</td><td>12', 20', 30'</td></tr>
+      <tr><td>Exterior panel, smooth/seamless or V-groove (used here for wraps)</td><td>12"</td><td>½"</td><td>12', 20'</td></tr>
+      <tr><td>Ceiling &amp; soffit panel (used here for soffits)</td><td>6"</td><td>⅜"</td><td>12', 20', 30'</td></tr>
+      <tr><td>Ceiling &amp; soffit panel</td><td>4"</td><td>⅜"</td><td>12', 20'</td></tr>
+      <tr><td>Vented soffit</td><td>4", 6"</td><td>⅜"</td><td>12', 20'</td></tr>
+    </tbody>
+  </table>
+  <p class="small"><b>Trims:</b> 1pc J-trim (siding &amp; soffit), 2pc J / finish trim (6" and 12" panels), 2pc outside corner,
+    1pc inside corner, 2¾" 2pc H-trim (siding), 1.77" 2pc H-trim (soffit, 12' only), 3½" 2pc finish trim, starter strip,
+    2pc crown mould (10'). Most in 12' and 20'; some in aluminium, PVC or both.</p>
+  <p class="small"><b>Fastening (ESR-4560):</b> hot-dipped galvanised or stainless #8 truss/wafer-head screws (0.40" head), at least 1¼" into wood,
+    in the centre of the nailing slot, 16" on centre maximum. Leave a small gap under the head so the panel can move; no staples or nail guns.
+    The wall listing calls for 7/16" OSB or plywood sheathing behind the panel, so ask ChamClad what they want behind beam and post wraps.</p>
+  <p class="small"><b>Movement:</b> PVC grows and shrinks with temperature. Leave an expansion gap at panel ends and inside trims (about ⅜" on column wraps),
+    and hide it under a trim or slip joint.</p>
+  <p class="small"><b>Stock colours:</b> Cinnamon Walnut, Sunbleached Oak, Toffee, Barrel Oak, Charred Black, Atlantic White, Beachwood Grey,
+    Barnboard Grey, Mountain Oak, Monument Oak, Mountain Pine, Teak, Canadian Fir, Cherry, Spanish Cedar, Bamboo, Honey,
+    Harvest Walnut, Modern Walnut, Brown Oak, Speckled Graphite, Pure White, Brushed Metallic, Brushed Titanium, Brushed Silver.</p>
+  <p class="small muted">Sources: ICC-ES ESR-4560; ChamClad USA product brochure; ChamClad EPDs (environdec.com 19730, 19731);
+    ChamClad Installation Manual (Jan 2024). Sizes and colours change, so confirm with your dealer before ordering.</p>`;
+
+// Every drawing of both porches, one sheet each, then the key and ChamClad list per porch.
+function printAll() {
+  const keepSel = selectedId;
+  selectedId = null;
+  const date = new Date().toLocaleDateString();
+  const head = t => `<div class="sheet-head"><span>${t}</span><span>${date}</span></div>`;
+  const pages = [];
+  let n = 0;
+  for (const sc of Object.values(state.scenes)) {
+    for (const view of Object.keys(DRAW_VIEWS)) {
+      const d = drawingSvg(sc, view, 'pclip' + n++);
+      const v = d.vb;
+      pages.push(`<section class="sheet">${head(`<b>${esc(sc.title)}</b> · ${DRAW_VIEWS[view].label}`)}
+        <svg class="sheet-svg" viewBox="${n2(v.x)} ${n2(v.y)} ${n2(v.w)} ${n2(v.h)}" preserveAspectRatio="xMidYMid meet">${d.html}</svg></section>`);
+    }
+    pages.push(`<section class="sheet text">${head(`<b>${esc(sc.title)}</b> · Key, wrap and soffit list`)}
+      ${legendHtml(sc)}${chamcladHtml(sc)}</section>`);
+  }
+  pages.push(`<section class="sheet text">${head('<b>ChamClad</b> · Product notes')}${CHAMCLAD_SPECS}</section>`);
+  selectedId = keepSel;
+  const host = $('#printSheets');
+  host.innerHTML = pages.join('');
+  document.body.classList.add('printing-all');
+  const done = () => {
+    document.body.classList.remove('printing-all');
+    host.innerHTML = '';
+    removeEventListener('afterprint', done);
+  };
+  addEventListener('afterprint', done);
+  print();
 }
 
 // zoom with the wheel, drag to pan, click a piece to select it
@@ -1739,6 +1932,9 @@ document.querySelectorAll('#modeTabs button').forEach(b => b.onclick = () => set
 document.querySelectorAll('#drawTabs button').forEach(b => b.onclick = () => { ui.drawView = b.dataset.dview; saveUi(); renderDrawing(); });
 $('#drawFit').onclick = () => renderDrawing(true);
 $('#drawPrint').onclick = () => print();
+$('#drawPrintAll').onclick = printAll;
+$('#printAllBtn').onclick = printAll;
+if (location.hash === '#print') setTimeout(printAll, 300); // index.html#print opens straight into Print all
 wrapToggle.onchange = () => { ui.wrapPreview = wrapToggle.checked; saveUi(); buildMembers(); };
 function setTape(on) {
   tapeMode = on;
